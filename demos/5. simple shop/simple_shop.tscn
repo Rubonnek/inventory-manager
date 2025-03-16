@@ -1,0 +1,67 @@
+[gd_scene load_steps=2 format=3 uid="uid://bius36l10e1e1"]
+
+[ext_resource type="Script" path="res://demos/5. simple shop/simple_shop.gd" id="1_84qsh"]
+
+[node name="ShopPanelContainer" type="PanelContainer" node_paths=PackedStringArray("inventory_item_list_", "shop_item_list_", "total_gold_coins_in_inventory_label_", "organize_inventory_button_")]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_84qsh")
+inventory_item_list_ = NodePath("ShopVBoxContainer/ShopHBoxContainer/InventoryVBoxContainer/InventoryItemList")
+shop_item_list_ = NodePath("ShopVBoxContainer/ShopHBoxContainer/ShopVBoxContainer/ShopItemList")
+total_gold_coins_in_inventory_label_ = NodePath("ShopVBoxContainer/ShopHBoxContainer/InventoryVBoxContainer/TotalGoldCoinsInInventoryLabel")
+organize_inventory_button_ = NodePath("ShopVBoxContainer/ShopHBoxContainer/InventoryVBoxContainer/OrganizeInventoryButton")
+
+[node name="ShopVBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="ShopInstructionsPanelContainer" type="PanelContainer" parent="ShopVBoxContainer"]
+layout_mode = 2
+
+[node name="ShopInstructionsLabel" type="Label" parent="ShopVBoxContainer/ShopInstructionsPanelContainer"]
+layout_mode = 2
+text = "* Double click an item on the shop to buy it.
+* Double click an item on the inventory to sell it.
+* Alternatively you can click an item and press Enter.
+* The inventory will be saved/loaded automatically."
+horizontal_alignment = 1
+
+[node name="ShopHBoxContainer" type="HBoxContainer" parent="ShopVBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="InventoryVBoxContainer" type="VBoxContainer" parent="ShopVBoxContainer/ShopHBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="InventoryLabel" type="Label" parent="ShopVBoxContainer/ShopHBoxContainer/InventoryVBoxContainer"]
+layout_mode = 2
+text = "Inventory"
+horizontal_alignment = 1
+
+[node name="InventoryItemList" type="ItemList" parent="ShopVBoxContainer/ShopHBoxContainer/InventoryVBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="OrganizeInventoryButton" type="Button" parent="ShopVBoxContainer/ShopHBoxContainer/InventoryVBoxContainer"]
+layout_mode = 2
+text = "Organize Inventory"
+
+[node name="TotalGoldCoinsInInventoryLabel" type="Label" parent="ShopVBoxContainer/ShopHBoxContainer/InventoryVBoxContainer"]
+layout_mode = 2
+text = "Total Gold Coins:"
+
+[node name="ShopVBoxContainer" type="VBoxContainer" parent="ShopVBoxContainer/ShopHBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ShopLabel" type="Label" parent="ShopVBoxContainer/ShopHBoxContainer/ShopVBoxContainer"]
+layout_mode = 2
+text = "Shop"
+horizontal_alignment = 1
+
+[node name="ShopItemList" type="ItemList" parent="ShopVBoxContainer/ShopHBoxContainer/ShopVBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3

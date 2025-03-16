@@ -1,0 +1,16 @@
+[remap]
+
+importer="rubonnek.gdx_texture_packer_atlas_importer"
+type="AtlasTexture"
+uid="uid://cwb3s40ny8h2d"
+path="res://.godot/imported/items.atlas-41330540537e814c283ca37d9fa0239d.tres"
+
+[deps]
+
+files=["res://demos/inventory_icons/items.atlas_textures/dagger.tres", "res://demos/inventory_icons/items.atlas_textures/enhanced_dagger.tres", "res://demos/inventory_icons/items.atlas_textures/gold_ingot.tres", "res://demos/inventory_icons/items.atlas_textures/health_potion.tres", "res://demos/inventory_icons/items.atlas_textures/mana_potion.tres", "res://demos/inventory_icons/items.atlas_textures/silver_ingot.tres", "res://demos/inventory_icons/items.atlas_textures/staff.tres", "res://demos/inventory_icons/items.atlas_textures/enhanced_staff.tres", "res://demos/inventory_icons/items.atlas_textures/sword.tres", "res://demos/inventory_icons/items.atlas_textures/enhanced_sword.tres"]
+
+source_file="res://demos/inventory_icons/items.atlas"
+dest_files=["res://.godot/imported/items.atlas-41330540537e814c283ca37d9fa0239d.tres", "res://demos/inventory_icons/items.atlas_textures/dagger.tres", "res://demos/inventory_icons/items.atlas_textures/enhanced_dagger.tres", "res://demos/inventory_icons/items.atlas_textures/gold_ingot.tres", "res://demos/inventory_icons/items.atlas_textures/health_potion.tres", "res://demos/inventory_icons/items.atlas_textures/mana_potion.tres", "res://demos/inventory_icons/items.atlas_textures/silver_ingot.tres", "res://demos/inventory_icons/items.atlas_textures/staff.tres", "res://demos/inventory_icons/items.atlas_textures/enhanced_staff.tres", "res://demos/inventory_icons/items.atlas_textures/sword.tres", "res://demos/inventory_icons/items.atlas_textures/enhanced_sword.tres"]
+
+[params]
+

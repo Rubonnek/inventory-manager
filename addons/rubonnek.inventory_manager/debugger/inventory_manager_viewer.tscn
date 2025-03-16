@@ -1,0 +1,94 @@
+[gd_scene load_steps=2 format=3 uid="uid://c1rpq82pmvhum"]
+
+[ext_resource type="Script" path="res://addons/rubonnek.inventory_manager/debugger/inventory_manager_viewer.gd" id="1_tvtkg"]
+
+[node name="InventoryManager" type="PanelContainer" node_paths=PackedStringArray("inventory_manager_viewer_manager_selection_line_edit_", "inventory_manager_viewer_manager_selection_tree_", "inventory_manager_viewer_item_slots_tree_", "inventory_manager_viewer_item_slots_view_warning_label_", "inventory_manager_viewer_inventory_data_view_text_edit_", "inventory_manager_viewer_inventory_data_view_warning_label_")]
+custom_minimum_size = Vector2(0, 240)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("1_tvtkg")
+inventory_manager_viewer_manager_selection_line_edit_ = NodePath("InventoryManagerViewerHSplitContainer/InventoryManagerViewerManagerSelectionVBoxContainer/InventoryManagerViewerEngineSelectionLineEdit")
+inventory_manager_viewer_manager_selection_tree_ = NodePath("InventoryManagerViewerHSplitContainer/InventoryManagerViewerManagerSelectionVBoxContainer/InventoryManagerViewerEngineSelectionTree")
+inventory_manager_viewer_item_slots_tree_ = NodePath("InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsVBoxContainer/InventoryManagerViewerItemSlotsTree")
+inventory_manager_viewer_item_slots_view_warning_label_ = NodePath("InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsVBoxContainer/InventoryManagerViewerItemSlotsTree/InventoryManagerViewerItemSlotsViewWarningLabel")
+inventory_manager_viewer_inventory_data_view_text_edit_ = NodePath("InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsViewTabContainer/Slot Data/InventoryManagerViewerInventoryDataViewTextEditLabel")
+inventory_manager_viewer_inventory_data_view_warning_label_ = NodePath("InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsViewTabContainer/Slot Data/InventoryManagerViewerInventoryDataViewTextEditLabel/InventoryManagerViewerInventoryDataViewWarningLabel")
+
+[node name="InventoryManagerViewerHSplitContainer" type="HSplitContainer" parent="."]
+layout_mode = 2
+
+[node name="InventoryManagerViewerManagerSelectionVBoxContainer" type="VBoxContainer" parent="InventoryManagerViewerHSplitContainer"]
+layout_mode = 2
+
+[node name="InventoryManagerViewerEngineSelectionLineEdit" type="LineEdit" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerManagerSelectionVBoxContainer"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+placeholder_text = "Filter Managers"
+
+[node name="InventoryManagerViewerEngineSelectionTree" type="Tree" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerManagerSelectionVBoxContainer"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+size_flags_vertical = 3
+hide_root = true
+
+[node name="InventoryManagerViewerHSplitContainer" type="HSplitContainer" parent="InventoryManagerViewerHSplitContainer"]
+layout_mode = 2
+
+[node name="InventoryManagerViewerItemSlotsVBoxContainer" type="VBoxContainer" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="InventoryManagerViewerItemSlotsLabel" type="Label" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsVBoxContainer"]
+layout_mode = 2
+text = "Inventory Slots"
+horizontal_alignment = 1
+
+[node name="InventoryManagerViewerItemSlotsTree" type="Tree" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsVBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+columns = 2
+column_titles_visible = true
+hide_root = true
+select_mode = 1
+
+[node name="InventoryManagerViewerItemSlotsViewWarningLabel" type="Label" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsVBoxContainer/InventoryManagerViewerItemSlotsTree"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "Run project to select an InventoryManager."
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="InventoryManagerViewerItemSlotsViewTabContainer" type="TabContainer" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Slot Data" type="VBoxContainer" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsViewTabContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="InventoryManagerViewerInventoryDataViewTextEditLabel" type="TextEdit" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsViewTabContainer/Slot Data"]
+layout_mode = 2
+size_flags_vertical = 3
+editable = false
+deselect_on_focus_loss_enabled = false
+drag_and_drop_selection_enabled = false
+virtual_keyboard_enabled = false
+middle_mouse_paste_enabled = false
+
+[node name="InventoryManagerViewerInventoryDataViewWarningLabel" type="Label" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsViewTabContainer/Slot Data/InventoryManagerViewerInventoryDataViewTextEditLabel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "Run project to select a ItemSlot"
+horizontal_alignment = 1
+vertical_alignment = 1
