@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://b6dw00rb51m2t"]
+[gd_scene load_steps=2 format=3 uid="uid://cani2nlk1ftmy"]
 
 [ext_resource type="Script" path="res://demos/3. stack count limit/stack_count_limit.gd" id="1_cocai"]
 
