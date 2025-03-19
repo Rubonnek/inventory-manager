@@ -67,9 +67,10 @@ const _DEFAULT_SIZE : int = 200
 const INFINITE_SIZE : int = -1
 const _INT64_MAX : int = 2 ** 63 - 1
 
-## Adds an item starting at the specified slot index. If it's not possible to add the item at any index, this function will automatically attempt to add the item in the next index, and so on, looping around the inventory slots until the index before the specified index has been reached.[br]
+## Adds the specified item amount to the inventory.[br]
+## When [code]p_start_slot_number[/code] is specified and it is possible to create more stacks for the specified item, the manager will attempt to add items at the specified slot or at any higher slot if needed, also looping around to the beginning of the inventory when necessary as well.[br][br]
 ## When [code]p_partial_add[/code] is true (default), if the amount exceeds what can be added to the inventory and there is still some capacity for the item, the remaining item amount not added to the inventory will be returned as an [ExcessItems].[br][br]
-## When [code]p_partial_add[/code] is false, if the amount exceeds what can be added to the inventory, the item will not be added at all to the inventory and will be returned as an [ExcessItems].
+## When [code]p_partial_add[/code] is false, if the amount exceeds what can be added to the inventory, the item amount will not be added at all to the inventory and will be returned as an [ExcessItems].
 func add(p_item_id : int, p_amount : int, p_start_slot_number : int = -1, p_partial_add : bool = true) -> ExcessItems:
 	if p_item_id < 0:
 		push_warning("InventoryManager: Attempted to add an item with invalid item ID (%d). Ignoring call. The item ID must be equal or greater than zero." % p_item_id)
@@ -233,7 +234,10 @@ func add(p_item_id : int, p_amount : int, p_start_slot_number : int = -1, p_part
 	return __create_excess_items(p_item_id, p_amount)
 
 
-## Removes an item entry from the inventory given its slot index.
+## Removes the specified item amount to the inventory.[br]
+## When [code]p_start_slot_number[/code] is specified,  the manager will attempt to remove items from the specified slot or at any higher slot if needed, also looping around to the beginning of the inventory when necessary as well.[br][br]
+## When [code]p_partial_add[/code] is true (default), if the amount exceeds what can be removed from the inventory and there are still some items in the inventory, the remaining item amount within the inventory will be removed and the non-removed items will be returned as an [ExcessItems].[br][br]
+## When [code]p_partial_add[/code] is false, if the amount exceeds what can be removed from the inventory, the item amount will not be removed at all from the inventory and instead will be returned as an [ExcessItems].
 func remove(p_item_id : int, p_amount : int, p_start_slot_number : int = -1,  p_partial_removal : bool = true) -> ExcessItems:
 	if not _m_item_registry.has_item(p_item_id):
 		push_warning("InventoryManager: Adding unregistered item with id (%d) to the inventory. The default stack capacity and max stacks values will be used. Register item ID within the item registry before adding item to the inventory to silence this message." % p_item_id)
@@ -411,7 +415,7 @@ func swap(p_first_slot_number : int, p_second_slot_number : int) -> void:
 		EngineDebugger.send_message("inventory_manager:swap", [get_instance_id(), p_first_slot_number, p_second_slot_number])
 
 
-## Transfers items from first slot to the second.
+## Transfers items from first specified slot to the second specified slot.
 func transfer(p_first_slot_number : int, p_first_amount : int, p_second_slot_number : int) -> void:
 	if not is_slot_valid(p_first_slot_number):
 		push_warning("InventoryManager: Attempted to transfer an item from invalid slot '%d'. Ignoring call." % [p_first_slot_number])
@@ -453,7 +457,7 @@ func transfer(p_first_slot_number : int, p_first_amount : int, p_second_slot_num
 		return
 
 
-## Resrves memory up to the desired number of slots in memory as long as the inventory size allows. Returns OK when successful.
+## Reserves memory up to the desired number of slots in memory as long as the inventory size allows. Returns OK when successful.
 func reserve(p_number_of_slots : int = -1) -> Error:
 	var allocated_slots : int = __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size())
 	if p_number_of_slots <= allocated_slots:
@@ -475,7 +479,6 @@ func reserve(p_number_of_slots : int = -1) -> Error:
 
 
 ## Returns the item ID for the given item slot. Returns -1 on invalid slots.
-## Warning: check if the slot i
 func get_slot_item_id(p_slot_index : int) -> int:
 	if not is_slot_valid(p_slot_index):
 		push_warning("InventoryManager: Invalid slot (%d) passed to get_slot_item_id()." % p_slot_index)
@@ -546,8 +549,8 @@ func has_item(p_item_id : int) -> bool:
 	return p_item_id in _m_item_slots_tracker
 
 
-## Resizes the inventory and returns the an array of excess items after the specified slot number if any.[br]
-## When the size is set to [code]INFINITE_SIZE[/code], the inventory size is not increased in memory but handled increased on demand. If preallocation is required for its performance benefit, use [method reserve].
+## Changes the inventory size and returns an array of excess items after the specified slot number if any are found.[br][br]
+## When the size is set to [code]InventoryManager.INFINITE_SIZE[/code], the inventory size is not increased in memory but increased upon demand. If slot preallocation is required for its performance benefit, use [method reserve].
 func resize(p_new_slot_count : int) -> Array[ExcessItems]:
 	var excess_items_array : Array[ExcessItems] = []
 	if p_new_slot_count != INFINITE_SIZE and p_new_slot_count < 0:
@@ -581,7 +584,7 @@ func resize(p_new_slot_count : int) -> Array[ExcessItems]:
 	# Track the new size:
 	__set_size(p_new_slot_count)
 
-	# Sycnrhonize change with the debugger:
+	# Synchronize change with the debugger:
 	if EngineDebugger.is_active():
 		EngineDebugger.send_message("inventory_manager:resize", [get_instance_id(), p_new_slot_count])
 	return excess_items_array
@@ -608,11 +611,13 @@ func __add_items_to_slot(p_slot_index : int, p_item_id : int, p_amount : int) ->
 	return remaining_amount_to_add
 
 
+# Sets the size of the inventory.
 func __set_size(p_new_size : int) -> void:
 	if p_new_size == _DEFAULT_SIZE:
 		var _success : int = _m_inventory_manager_dictionary.erase(_key.SIZE)
 	else:
 		_m_inventory_manager_dictionary[_key.SIZE] = p_new_size
+
 
 # Removes items from the specified slot number. Returns the number of items not removed from the slot.
 # NOTE: The slot number is assumed to be within bounds in this function.
@@ -655,7 +660,7 @@ func __get_slot_item_amount(p_slot_index : int) -> int:
 	return amount
 
 
-## Returns the remaining amount of items this entry can hold.
+# Returns the remaining amount of items this slot can hold.
 # NOTE: The slot number is assumed to be within bounds in this function.
 func __get_remaining_slot_capacity(p_slot_index : int) -> int:
 	var item_id : int = __get_slot_item_id(p_slot_index)
@@ -677,7 +682,7 @@ func __is_slot_allocated(p_slot_index : int) -> bool:
 	return p_slot_index < __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size())
 
 
-## Returns the excess items when the current stack capacity is bigger than the registered stack capacity for the current item ID and modifies the item amount if needed. Returns null when there are no excess items to extract.
+# Returns the excess items when the current stack capacity is bigger than the registered stack capacity for the current item ID and modifies the item amount if needed. Returns null when there are no excess items to extract.
 # NOTE: The slot number is assumed to be within bounds in this function.
 func __extract_excess_items(p_slot_index : int) -> ExcessItems:
 	var item_id : int = __get_slot_item_id(p_slot_index)
@@ -712,7 +717,9 @@ func __calculate_slot_numbers_given_array_size(p_array_size : int) -> int:
 	return p_array_size / 2
 
 
-## Returns the number of slots inventory has. If the inventory is set to infinite size, returns the number of slots currently allocated in memory. To check if the inventory is set to infinite size, use [method is_infinite].
+## Returns the number of slots inventory has. If the inventory is set to infinite size, returns the number of slots currently allocated in memory.[br][br]
+## To check if the inventory is set to infinite size, use [method is_infinite].[br][br]
+## To always return the number of slots allocated in memory, use [method slots].
 func size() -> int:
 	if is_infinite():
 		return __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size())
@@ -749,12 +756,12 @@ func get_name() -> String:
 	return get_meta(&"name", "")
 
 
-## Returns true if the inventory can handle the item in question. Returns false otherwise. This function is a wrapper around [method ItemRegistry.has_item], specifically for inventory instances that can only handle items from the registry.
+## Returns true if the inventory can handle the item in question. Returns false otherwise. This function is a wrapper around [method ItemRegistry.has_item], specifically for inventory manager instances should only handle items from the registry.
 func is_item_registered(p_item_id : int) -> bool:
 	return _m_item_registry.has_item(p_item_id)
 
 
-## Returns a duplicated slots array in a with internal keys replaced with strings for easier reading/debugging.[br]
+## Returns a duplicated slots array with internal keys replaced with strings for easier reading/debugging.[br]
 ## [br]
 ## [b]Example[/b]:
 ## [codeblock]
@@ -793,14 +800,14 @@ func prettify() -> Array:
 	return prettified_data
 
 
-## Returns a dictionary of all the data processed by the manager. Use [method set_data] initalize an inventory back to the extracted data.[br]
+## Returns a dictionary of all the data processed by the manager. Use [method set_data] initialize an inventory back to the extracted data.[br]
+## [br]
+## [color=yellow]Warning:[/color] Use with caution. Modifying this dictionary will directly modify the inventory manager data.
 func get_data() -> Dictionary:
 	return _m_inventory_manager_dictionary
 
 
 ## Sets the inventory manager data.
-## [br]
-## [color=yellow]Warning:[/color] Use with caution. Modifying this array will directly modify the item slot data.
 func set_data(p_data : Dictionary) -> void:
 	# Clear the inventory
 	clear()
@@ -926,7 +933,7 @@ func get_empty_slot_count() -> int:
 	return inventory_size - total_slots_filled
 
 
-## Returns the item capacity for the specified item ID.
+## Returns the remaining item capacity for the specified item ID.
 func get_remaining_capacity_for_item(p_item_id : int) -> int:
 	# Check if the inventory is infinite because then that simplifies this operation.
 	var inventory_size : int = size()
@@ -1039,7 +1046,7 @@ func clear() -> void:
 	inventory_cleared.emit()
 
 
-# Creates and returns an ExcessItems object meant to represent either the unprocessed addition or removal of items from the inventory.
+# Creates and returns an [ExcessItems] object meant to represent either the unprocessed addition or removal of items from the inventory.
 func __create_excess_items(p_item_id : int, p_amount : int) -> ExcessItems:
 	if p_amount == 0:
 		return null
