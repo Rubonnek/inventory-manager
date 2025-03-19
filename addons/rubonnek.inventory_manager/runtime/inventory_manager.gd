@@ -67,6 +67,7 @@ const _DEFAULT_SIZE : int = 200
 const INFINITE_SIZE : int = -1
 const _INT64_MAX : int = 2 ** 63 - 1
 
+
 ## Adds the specified item amount to the inventory.[br]
 ## When [code]p_start_slot_number[/code] is specified and it is possible to create more stacks for the specified item, the manager will attempt to add items at the specified slot or at any higher slot if needed, also looping around to the beginning of the inventory when necessary as well.[br][br]
 ## When [code]p_partial_add[/code] is true (default), if the amount exceeds what can be added to the inventory and there is still some capacity for the item, the remaining item amount not added to the inventory will be returned as an [ExcessItems].[br][br]
@@ -1123,6 +1124,7 @@ func __remove_item_id_slot_from_tracker(p_item_id : int, p_slot_index : int) -> 
 	item_id_slots_array.remove_at(slot_index)
 	if item_id_slots_array.is_empty():
 		var _success : bool = _m_item_slots_tracker.erase(p_item_id)
+
 
 func _to_string() -> String:
 	return "<InventoryManager#%d> Size: %d, Allocated Slots: %d" % [get_instance_id(), size(), slots()]
