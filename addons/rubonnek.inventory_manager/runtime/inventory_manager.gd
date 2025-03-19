@@ -917,9 +917,7 @@ func __does_slot_have_excess_items(p_slot_index : int) -> bool:
 	var item_id : int = __get_slot_item_id(p_slot_index)
 	var registered_stack_capacity : int = _m_item_registry.get_stack_capacity(item_id)
 	var item_amount : int = __get_slot_item_amount(p_slot_index)
-	if item_amount > registered_stack_capacity:
-		return true
-	return false
+	return item_amount > registered_stack_capacity
 
 
 ## Returns the count of empty slots.
