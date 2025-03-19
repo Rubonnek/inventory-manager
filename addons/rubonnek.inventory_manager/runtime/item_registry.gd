@@ -29,9 +29,9 @@
 
 extends RefCounted
 class_name ItemRegistry
-## Represents an InventoryManager item registry: a list of items the InventoryManager knows how to handle.
+## Holds a list of items and data the InventoryManager will use to handle them.
 ##
-## Each ItemRegistry must initialized with a set of item IDs provided by the user which can then be used to track item metadata such as item name, description and stack capacity. Each of the item IDs entered will be tracked as a registry entry.
+## Each ItemRegistry must initialized with a set of item IDs provided by the user which can then be used to track item metadata such as item name, description, stack capacity, stack count limit and their metadata.
 
 signal item_modified(p_item_id : int)
 
@@ -59,7 +59,7 @@ const DEFAULT_STACK_COUNT_LIMIT : int = 0 # a stack count of 0 means the stack c
 ## Registers an item with the specified ID.
 func add_item(p_item_id : int, p_name : String = "", p_description : String = "", p_icon : Texture2D = null, p_stack_capacity : int = DEFAULT_STACK_CAPACITY, p_stack_count : int = DEFAULT_STACK_COUNT_LIMIT, p_metadata : Dictionary = {}) -> void:
 	if not p_item_id >= 0:
-		push_error("ItemRegistry: Unable to add entry. item IDs are required to be greater or equal to 0.")
+		push_error("ItemRegistry: Unable to add item to registry. The item IDs are required to be greater or equal to 0.")
 		return
 	if p_stack_capacity <= 0:
 		push_error("ItemRegistry: : Attempting to add item ID %d with invalid stack capacity %d. Stack capacity must be a positive integer." % p_item_id, p_stack_capacity)
@@ -90,155 +90,6 @@ func add_item(p_item_id : int, p_name : String = "", p_description : String = ""
 ## Returns true if the item ID is registered. Returns false otherwise.
 func has_item(p_item_id : int) -> bool:
 	return _m_item_registry_entries_dictionary.has(p_item_id)
-
-
-## Returns an array with the registered item IDs.
-func keys() -> PackedInt64Array:
-	var array : PackedInt64Array = _m_item_registry_entries_dictionary.keys()
-	return array
-
-
-## Attaches the specified metadata to the related item.
-func set_item_metadata(p_item_id : int, p_key : Variant, p_value : Variant) -> void:
-	if not _m_item_registry_entries_dictionary.has(p_item_id):
-		push_error("ItemRegistry: Attempting to set item metadata on unregistered item with id %d. Ignoring call." % p_item_id)
-		return
-	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary[p_item_id]
-	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
-	if item_metadata.is_empty():
-		item_registry_entry_dictionary[_item_entry_key.METADATA] = item_metadata
-	item_metadata[p_key] = p_value
-	item_modified.emit(p_item_id)
-
-
-## Sets the item metadata data.
-func set_item_metadata_data(p_item_id : int, p_metadata : Dictionary) -> void:
-	if not _m_item_registry_entries_dictionary.has(p_item_id):
-		push_error("ItemRegistry: Attempting to set item metadata on unregistered item with id %d. Ignoring call." % p_item_id)
-		return
-	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary[p_item_id]
-	item_registry_entry_dictionary[_item_entry_key.METADATA] = p_metadata
-	item_modified.emit(p_item_id)
-
-
-## Returns the specified metadata from the item registry entry.
-func get_item_metadata(p_item_id : int, p_key : Variant, p_default_value : Variant = null) -> Variant:
-	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
-	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
-	return item_metadata.get(p_key, p_default_value)
-
-
-## Returns a reference to the internal metadata dictionary.
-func get_item_metadata_data(p_item_id : int) -> Dictionary:
-	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
-	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
-	if not _m_item_registry_dictionary.has(_item_entry_key.METADATA):
-		# There's a chance the user wants to modify it externally and have it update the ItemRegistry automatically -- make sure we store a reference of that metadata:
-		_m_item_registry_dictionary[_item_entry_key.METADATA] = item_metadata
-	return item_metadata
-
-
-## Returns true if the item metadata has the specified key:
-func has_item_metadata_key(p_item_id : int, p_key : Variant) -> bool:
-	if not _m_item_registry_entries_dictionary.has(p_item_id):
-		push_error("ItemRegistry: Attempting to get item metadata on unregistered item with id %d. Returning false." % p_item_id)
-		return false
-	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary[p_item_id]
-	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
-	return item_metadata.has(p_key)
-
-
-## Returns true if the item registry entry has some metadata.
-func has_item_metadata(p_item_id : int) -> bool:
-	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
-	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
-	return not item_metadata.is_empty()
-
-
-## Attaches the specified metadata to the item registry.
-func set_registry_metadata(p_key : Variant, p_value : Variant) -> void:
-	var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
-	metadata[p_key] = p_value
-	if not _m_item_registry_dictionary.has(_registry_key.METADATA):
-		_m_item_registry_dictionary[_registry_key.METADATA] = metadata
-	__sync_registry_metadata_with_debugger()
-
-
-## Returns the specified metadata from the item registry.
-func get_registry_metadata(p_key : Variant, p_default_value : Variant = null) -> Variant:
-	var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
-	return metadata.get(p_key, p_default_value)
-
-
-## Returns a reference to the internal metadata dictionary.
-func get_registry_metadata_data() -> Dictionary:
-	var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
-	if not _m_item_registry_dictionary.has(_registry_key.METADATA):
-		# There's a chance the user wants to modify it externally and have it update the item registry automatically -- make sure we store a reference of that metadata:
-		_m_item_registry_dictionary[_registry_key.METADATA] = metadata
-	return metadata
-
-
-## Returns true if the item registry has some metadata.
-func has_registry_metadata() -> bool:
-	var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
-	return not metadata.is_empty()
-
-
-## Returns a reference to the internal dictionary where item registry entry data is stored.[br]
-## [br]
-## [color=yellow]Warning:[/color] Use with caution. Modifying this dictionary will directly modify the item registry entry entry data.
-func get_data() -> Dictionary:
-	return _m_item_registry_entries_dictionary
-
-
-## Overwrites the item registry data.
-func set_data(p_data : Dictionary) -> void:
-	# Track old item IDs:
-	var item_ids_changed : Dictionary = _m_item_registry_entries_dictionary
-
-	# Update data
-	_m_item_registry_dictionary = p_data
-	_m_item_registry_entries_dictionary = _m_item_registry_dictionary[_registry_key.ITEM_ENTRIES]
-
-	# Track new item IDs:
-	for item_id : int in _m_item_registry_entries_dictionary:
-		item_ids_changed[item_id] = true
-
-	# Send a signal about all the ids that changed:
-	for item_id : int in item_ids_changed:
-		item_modified.emit(item_id)
-
-	if EngineDebugger.is_active():
-		# NOTE: Do not use any of API calls directly here when setting values to avoid sending unnecessary data to the debugger about the duplicated item_registry entry being sent to display
-
-		# Process each entry data
-		var duplicated_registry_data : Dictionary = _m_item_registry_dictionary.duplicate(true)
-		for item_id : int in duplicated_registry_data:
-			# The debugger viewer requires certain objects to be stringified before sending -- duplicate the entry data to avoid overriding the runtime data:
-			var duplicated_item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary[item_id]
-			duplicated_item_registry_entry_dictionary = duplicated_item_registry_entry_dictionary.duplicate(true)
-
-			# Convert the image into an object that we can send into the debugger
-			if duplicated_item_registry_entry_dictionary.has(_item_entry_key.ICON):
-				var image : Image = duplicated_item_registry_entry_dictionary[_item_entry_key.ICON]
-				duplicated_item_registry_entry_dictionary[_item_entry_key.ICON] = var_to_bytes_with_objects(image)
-
-		# Process the ItemRegistry metadata:
-		var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
-		if not metadata.is_empty():
-			var stringified_metadata : Dictionary = {}
-			for key : Variant in metadata:
-				var value : Variant = metadata[key]
-				if key is Callable or key is Object:
-					stringified_metadata[str(key)] = str(value)
-				else:
-					stringified_metadata[key] = str(value)
-			# Replaced the source metadata with the stringified version that can be displayed remotely:
-			duplicated_registry_data[_registry_key.METADATA] = stringified_metadata
-
-		# Send the data
-		EngineDebugger.send_message("inventory_manager:item_registry_set_data", [get_instance_id(), duplicated_registry_data])
 
 
 ## Sets the item registry entry name.
@@ -374,11 +225,160 @@ func is_stack_count_limited(p_item_id : int) -> bool:
 	return get_stack_count(p_item_id) != 0
 
 
+## Returns an array with the registered item IDs.
+func keys() -> PackedInt64Array:
+	var array : PackedInt64Array = _m_item_registry_entries_dictionary.keys()
+	return array
+
+
+## Attaches the specified metadata to the related item.
+func set_item_metadata(p_item_id : int, p_key : Variant, p_value : Variant) -> void:
+	if not _m_item_registry_entries_dictionary.has(p_item_id):
+		push_error("ItemRegistry: Attempting to set item metadata on unregistered item with id %d. Ignoring call." % p_item_id)
+		return
+	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary[p_item_id]
+	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
+	if item_metadata.is_empty():
+		item_registry_entry_dictionary[_item_entry_key.METADATA] = item_metadata
+	item_metadata[p_key] = p_value
+	item_modified.emit(p_item_id)
+
+
+## Sets the item metadata data.
+func set_item_metadata_data(p_item_id : int, p_metadata : Dictionary) -> void:
+	if not _m_item_registry_entries_dictionary.has(p_item_id):
+		push_error("ItemRegistry: Attempting to set item metadata on unregistered item with id %d. Ignoring call." % p_item_id)
+		return
+	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary[p_item_id]
+	item_registry_entry_dictionary[_item_entry_key.METADATA] = p_metadata
+	item_modified.emit(p_item_id)
+
+
+## Returns the specified metadata from the item registry entry.
+func get_item_metadata(p_item_id : int, p_key : Variant, p_default_value : Variant = null) -> Variant:
+	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
+	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
+	return item_metadata.get(p_key, p_default_value)
+
+
+## Returns a reference to the internal metadata dictionary.
+func get_item_metadata_data(p_item_id : int) -> Dictionary:
+	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
+	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
+	if not _m_item_registry_dictionary.has(_item_entry_key.METADATA):
+		# There's a chance the user wants to modify it externally and have it update the ItemRegistry automatically -- make sure we store a reference of that metadata:
+		_m_item_registry_dictionary[_item_entry_key.METADATA] = item_metadata
+	return item_metadata
+
+
+## Returns true if the item metadata has the specified key:
+func has_item_metadata_key(p_item_id : int, p_key : Variant) -> bool:
+	if not _m_item_registry_entries_dictionary.has(p_item_id):
+		push_error("ItemRegistry: Attempting to get item metadata on unregistered item with id %d. Returning false." % p_item_id)
+		return false
+	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary[p_item_id]
+	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
+	return item_metadata.has(p_key)
+
+
+## Returns true if the item registry entry has some metadata.
+func has_item_metadata(p_item_id : int) -> bool:
+	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
+	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
+	return not item_metadata.is_empty()
+
+
+## Attaches the specified metadata to the item registry.
+func set_registry_metadata(p_key : Variant, p_value : Variant) -> void:
+	var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
+	metadata[p_key] = p_value
+	if not _m_item_registry_dictionary.has(_registry_key.METADATA):
+		_m_item_registry_dictionary[_registry_key.METADATA] = metadata
+	__sync_registry_metadata_with_debugger()
+
+
+## Returns the specified metadata from the item registry.
+func get_registry_metadata(p_key : Variant, p_default_value : Variant = null) -> Variant:
+	var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
+	return metadata.get(p_key, p_default_value)
+
+
+## Returns a reference to the internal metadata dictionary.
+func get_registry_metadata_data() -> Dictionary:
+	var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
+	if not _m_item_registry_dictionary.has(_registry_key.METADATA):
+		# There's a chance the user wants to modify it externally and have it update the item registry automatically -- make sure we store a reference of that metadata:
+		_m_item_registry_dictionary[_registry_key.METADATA] = metadata
+	return metadata
+
+
+## Returns true if the item registry has some metadata.
+func has_registry_metadata() -> bool:
+	var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
+	return not metadata.is_empty()
+
+
 ## Removes the registry entry given for the specified item ID.
 func erase(p_item_id : int) -> void:
 	var success : bool = _m_item_registry_entries_dictionary.erase(p_item_id)
 	if success:
 		item_modified.emit(p_item_id)
+
+
+## Returns a reference to the internal dictionary where item registry entry data is stored.[br]
+## [br]
+## [color=yellow]Warning:[/color] Use with caution. Modifying this dictionary will directly modify the item registry entry entry data.
+func get_data() -> Dictionary:
+	return _m_item_registry_entries_dictionary
+
+
+## Overwrites the item registry data.
+func set_data(p_data : Dictionary) -> void:
+	# Track old item IDs:
+	var item_ids_changed : Dictionary = _m_item_registry_entries_dictionary
+
+	# Update data
+	_m_item_registry_dictionary = p_data
+	_m_item_registry_entries_dictionary = _m_item_registry_dictionary[_registry_key.ITEM_ENTRIES]
+
+	# Track new item IDs:
+	for item_id : int in _m_item_registry_entries_dictionary:
+		item_ids_changed[item_id] = true
+
+	# Send a signal about all the ids that changed:
+	for item_id : int in item_ids_changed:
+		item_modified.emit(item_id)
+
+	if EngineDebugger.is_active():
+		# NOTE: Do not use any of API calls directly here when setting values to avoid sending unnecessary data to the debugger about the duplicated item_registry entry being sent to display
+
+		# Process each entry data
+		var duplicated_registry_data : Dictionary = _m_item_registry_dictionary.duplicate(true)
+		for item_id : int in duplicated_registry_data:
+			# The debugger viewer requires certain objects to be stringified before sending -- duplicate the entry data to avoid overriding the runtime data:
+			var duplicated_item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary[item_id]
+			duplicated_item_registry_entry_dictionary = duplicated_item_registry_entry_dictionary.duplicate(true)
+
+			# Convert the image into an object that we can send into the debugger
+			if duplicated_item_registry_entry_dictionary.has(_item_entry_key.ICON):
+				var image : Image = duplicated_item_registry_entry_dictionary[_item_entry_key.ICON]
+				duplicated_item_registry_entry_dictionary[_item_entry_key.ICON] = var_to_bytes_with_objects(image)
+
+		# Process the ItemRegistry metadata:
+		var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
+		if not metadata.is_empty():
+			var stringified_metadata : Dictionary = {}
+			for key : Variant in metadata:
+				var value : Variant = metadata[key]
+				if key is Callable or key is Object:
+					stringified_metadata[str(key)] = str(value)
+				else:
+					stringified_metadata[key] = str(value)
+			# Replaced the source metadata with the stringified version that can be displayed remotely:
+			duplicated_registry_data[_registry_key.METADATA] = stringified_metadata
+
+		# Send the data
+		EngineDebugger.send_message("inventory_manager:item_registry_set_data", [get_instance_id(), duplicated_registry_data])
 
 
 # Only used by the debugger to inject the data it receives
