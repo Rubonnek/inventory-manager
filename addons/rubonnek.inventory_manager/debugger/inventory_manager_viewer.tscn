@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://c1rpq82pmvhum"]
+[gd_scene load_steps=2 format=3 uid="uid://c7icg0tbtwioq"]
 
 [ext_resource type="Script" path="res://addons/rubonnek.inventory_manager/debugger/inventory_manager_viewer.gd" id="1_tvtkg"]
 
