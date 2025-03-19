@@ -31,7 +31,7 @@ extends RefCounted
 class_name ExcessItems
 ## Represents the amount of items not added to, or not removed from, an inventory.
 ##
-## The item amount is always positive and not clamped. Whether the items were intended to be removed or added remains in the context of the operation within [InventoryManager] or [ItemSlot].
+## The item amount is always positive and not clamped.
 
 var _m_item_registry : ItemRegistry
 var _m_item_slot_data : PackedInt64Array
@@ -52,22 +52,22 @@ func get_amount() -> int:
 	return _m_item_slot_data[1]
 
 
-## Returns the associated ItemRegistry.
+## Returns the associated [ItemRegistry].
 func get_registry() -> ItemRegistry:
 	return _m_item_registry
 
 
-## Returns the item name from its associated ItemRegistry.
+## Returns the item name from its associated [ItemRegistry].
 func get_name() -> String:
 	return get_registry().get_name(get_item_id())
 
 
-## Returns the item description from its associated ItemRegistry.
+## Returns the item description from its associated [ItemRegistry].
 func get_description() -> String:
 	return get_registry().get_description(get_item_id())
 
 
-## Returns the item icon from its associated ItemRegistry.
+## Returns the item icon from its associated [ItemRegistry].
 func get_icon() -> Texture2D:
 	return get_registry().get_icon(get_item_id())
 
