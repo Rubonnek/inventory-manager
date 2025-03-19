@@ -545,12 +545,7 @@ func has_item_amount(p_item_id : int, p_amount : int) -> bool:
 
 ## Returns true when one item with the specified item ID is found within the inventory. Returns false otherwise.
 func has_item(p_item_id : int) -> bool:
-	for slot_number : int in __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size()):
-		if __is_slot_empty(slot_number):
-			continue
-		if __get_slot_item_id(slot_number) == p_item_id:
-			return true
-	return false
+	return p_item_id in _m_item_slots_tracker
 
 
 ## Resizes the inventory and returns the an array of excess items after the specified slot number if any.[br]
