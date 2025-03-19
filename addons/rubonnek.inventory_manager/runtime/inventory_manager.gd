@@ -517,7 +517,7 @@ func is_slot_valid(p_slot_index : int) -> bool:
 	return p_slot_index < inventory_size
 
 
-## Returns the remaining amount of items this entry can hold. Returns -1 on an invalid slot number.
+## Returns the remaining amount of items the specified slot can hold. Returns -1 on an invalid slot number.
 func get_remaining_slot_capacity(p_slot_index : int) -> int:
 	if not is_slot_valid(p_slot_index):
 		return -1
