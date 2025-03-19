@@ -538,9 +538,7 @@ func get_item_total(p_item_id : int) -> int:
 ## Returns true if the inventory holds at least the specified amount of the item in question.
 func has_item_amount(p_item_id : int, p_amount : int) -> bool:
 	var item_total : int = get_item_total(p_item_id)
-	if p_amount <= item_total:
-		return true
-	return false
+	return p_amount <= item_total
 
 
 ## Returns true when one item with the specified item ID is found within the inventory. Returns false otherwise.
