@@ -1045,6 +1045,12 @@ func clear() -> void:
 	inventory_cleared.emit()
 
 
+## Deregisters the inventory manager from the debugger.
+func deregister() -> void:
+	if EngineDebugger.is_active():
+		EngineDebugger.send_message("inventory_manager:deregister_inventory_manager", [get_instance_id()])
+
+
 # Creates and returns an [ExcessItems] object meant to represent either the unprocessed addition or removal of items from the inventory.
 func __create_excess_items(p_item_id : int, p_amount : int) -> ExcessItems:
 	if p_amount == 0:
