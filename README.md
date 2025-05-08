@@ -6,7 +6,7 @@ A minimalistic inventory manager for the Godot Game Engine.
 
 ## :star: Features
 
-- :convenience_store: Manipulate inventories with ease in GDScript
+- :convenience_store: Easily add and remove items with variable stack sizes and stack count limits
 - :art: Easy to customize -- bring your own GUI nodes
 - :hammer_and_wrench: Inventory viewer included at runtime in a debugger panel
 
