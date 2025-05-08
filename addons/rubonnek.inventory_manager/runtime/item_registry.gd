@@ -329,7 +329,7 @@ func erase(p_item_id : int) -> void:
 ## [br]
 ## [color=yellow]Warning:[/color] Use with caution. Modifying this dictionary will directly modify the item registry entry entry data.
 func get_data() -> Dictionary:
-	return _m_item_registry_entries_dictionary
+	return _m_item_registry_dictionary
 
 
 ## Overwrites the item registry data.
