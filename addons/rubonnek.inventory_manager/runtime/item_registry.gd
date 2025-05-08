@@ -325,6 +325,21 @@ func erase(p_item_id : int) -> void:
 		item_modified.emit(p_item_id)
 
 
+## Appends all the items of another item registry.
+func append(p_item_registry : ItemRegistry) -> void:
+	var registry_data : Dictionary = p_item_registry.get_data()
+	var entries_data : Dictionary = registry_data.get(_registry_key.ITEM_ENTRIES, {})
+	for item_id : int in entries_data:
+		var item_registry_entry_dictionary : Dictionary = entries_data[item_id]
+		var name : String = item_registry_entry_dictionary.get(_item_entry_key.NAME, "")
+		var description : String = item_registry_entry_dictionary.get(_item_entry_key.DESCRIPTION, "")
+		var icon : Texture2D = item_registry_entry_dictionary.get(_item_entry_key.ICON, null)
+		var stack_capacity : int = item_registry_entry_dictionary.get(_item_entry_key.STACK_CAPACITY, DEFAULT_STACK_CAPACITY)
+		var stack_count : int = item_registry_entry_dictionary.get(_item_entry_key.STACK_COUNT_LIMIT, DEFAULT_STACK_COUNT_LIMIT)
+		var metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
+		add_item(item_id, name, description, icon, stack_capacity, stack_count, metadata)
+
+
 ## Returns a reference to the internal dictionary where item registry entry data is stored.[br]
 ## [br]
 ## [color=yellow]Warning:[/color] Use with caution. Modifying this dictionary will directly modify the item registry entry entry data.
