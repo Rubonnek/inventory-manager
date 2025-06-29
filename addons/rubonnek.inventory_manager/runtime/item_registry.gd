@@ -33,6 +33,8 @@ class_name ItemRegistry
 ##
 ## Each ItemRegistry must initialized with a set of item IDs provided by the user which can then be used to track item metadata such as item name, description, stack capacity, stack count limit and their metadata.
 
+
+## Emitted when an item is modified.
 signal item_modified(p_item_id : int)
 
 var _m_item_registry_dictionary : Dictionary
@@ -56,7 +58,7 @@ const DEFAULT_STACK_CAPACITY : int = 99
 const DEFAULT_STACK_COUNT_LIMIT : int = 0 # a stack count of 0 means the stack count limit is infinite
 
 
-## Registers an item with the specified ID.
+## Adds an item to the registry.
 func add_item(p_item_id : int, p_name : String = "", p_description : String = "", p_icon : Texture2D = null, p_stack_capacity : int = DEFAULT_STACK_CAPACITY, p_stack_count : int = DEFAULT_STACK_COUNT_LIMIT, p_metadata : Dictionary = {}) -> void:
 	if not p_item_id >= 0:
 		push_error("ItemRegistry: Unable to add item to registry. The item IDs are required to be greater or equal to 0.")
@@ -87,12 +89,12 @@ func add_item(p_item_id : int, p_name : String = "", p_description : String = ""
 	item_modified.emit(p_item_id)
 
 
-## Returns true if the item ID is registered. Returns false otherwise.
+## Returns true if the item is registered. Returns false otherwise.
 func has_item(p_item_id : int) -> bool:
 	return _m_item_registry_entries_dictionary.has(p_item_id)
 
 
-## Sets the item registry entry name.
+## Sets the item name.
 func set_name(p_item_id : int, p_name : String) -> void:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	if not _m_item_registry_entries_dictionary.has(p_item_id):
@@ -104,19 +106,19 @@ func set_name(p_item_id : int, p_name : String) -> void:
 	item_modified.emit(p_item_id)
 
 
-## Returns the item registry entry name.
+## Returns the item name.
 func get_name(p_item_id : int) -> String:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	return item_registry_entry_dictionary.get(_item_entry_key.NAME, "")
 
 
-## Returns true if the item registry entry has a name.
+## Returns true if the item has a registered name.
 func has_name(p_item_id : int) -> bool:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	return item_registry_entry_dictionary.has(_item_entry_key.NAME)
 
 
-## Sets the item registry entry description.
+## Sets the item description.
 func set_description(p_item_id : int, p_description : String) -> void:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	if not _m_item_registry_entries_dictionary.has(p_item_id):
@@ -128,19 +130,19 @@ func set_description(p_item_id : int, p_description : String) -> void:
 	item_modified.emit(p_item_id)
 
 
-## Returns the item registry entry description.
+## Returns the item description.
 func get_description(p_item_id : int) -> String:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	return item_registry_entry_dictionary.get(_item_entry_key.DESCRIPTION, "")
 
 
-## Returns true if the item registry entry has a description.
+## Returns true if the item has a description.
 func has_description(p_item_id : int) -> bool:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	return item_registry_entry_dictionary.has(_item_entry_key.DESCRIPTION)
 
 
-## Sets the item registry entry icon.
+## Sets the item icon.
 func set_icon(p_item_id : int, p_texture : Texture2D) -> void:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	if not _m_item_registry_entries_dictionary.has(p_item_id):
@@ -152,19 +154,19 @@ func set_icon(p_item_id : int, p_texture : Texture2D) -> void:
 	item_modified.emit(p_item_id)
 
 
-## Returns the item registry entry icon. Returns null if there's none.
+## Returns the item icon. Returns [code]null[/code] if there's none.
 func get_icon(p_item_id : int) -> Texture2D:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	return item_registry_entry_dictionary.get(_item_entry_key.ICON, null)
 
 
-## Returns true if the item registry entry has a icon.
+## Returns true if the item has an icon.
 func has_icon(p_item_id : int) -> bool:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	return item_registry_entry_dictionary.has(_item_entry_key.ICON)
 
 
-## Sets the item registry entry stack_capacity.
+## Sets the maximum number of items per stack for the item.
 func set_stack_capacity(p_item_id : int, p_stack_capacity : int) -> void:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	if not _m_item_registry_entries_dictionary.has(p_item_id):
@@ -179,19 +181,19 @@ func set_stack_capacity(p_item_id : int, p_stack_capacity : int) -> void:
 	item_modified.emit(p_item_id)
 
 
-## Returns the stack capacity for the registered item.
+## Returns the stack capacity for the item.
 func get_stack_capacity(p_item_id : int) -> int:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	return item_registry_entry_dictionary.get(_item_entry_key.STACK_CAPACITY, DEFAULT_STACK_CAPACITY)
 
 
-## Returns true if the item registry entry has a stack_capacity.
+## Returns true if the item has a stack_capacity different than 99, the default value.
 func has_stack_capacity(p_item_id : int) -> bool:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	return item_registry_entry_dictionary.has(_item_entry_key.STACK_CAPACITY)
 
 
-## Sets the item registry entry stack_count.
+## Sets the maximum number of stacks for the item.
 func set_stack_count_limit(p_item_id : int, p_stack_count : int = 0) -> void:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	if not _m_item_registry_entries_dictionary.has(p_item_id):
@@ -206,13 +208,13 @@ func set_stack_count_limit(p_item_id : int, p_stack_count : int = 0) -> void:
 	item_modified.emit(p_item_id)
 
 
-## Returns the stack count for the registerd stack_capacity.
+## Returns the maximum number of items per stack for the item.
 func get_stack_count(p_item_id : int) -> int:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	return item_registry_entry_dictionary.get(_item_entry_key.STACK_COUNT_LIMIT, DEFAULT_STACK_COUNT_LIMIT)
 
 
-## Returns true if the item registry entry has stack_count set to other than 0.
+## Returns true if the item has a stack count set different than 0, the default value..
 func has_stack_count(p_item_id : int) -> bool:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	if not _m_item_registry_entries_dictionary.has(p_item_id):
@@ -220,12 +222,12 @@ func has_stack_count(p_item_id : int) -> bool:
 	return item_registry_entry_dictionary.has(_item_entry_key.STACK_COUNT_LIMIT)
 
 
-## Returns true if the stack count for this item is limited. Returns false otherwise.
+## Returns true if the stack count for the item is set to greater than 0. Returns false otherwise.
 func is_stack_count_limited(p_item_id : int) -> bool:
-	return get_stack_count(p_item_id) != 0
+	return get_stack_count(p_item_id) > 0
 
 
-## Returns an array with the registered item IDs.
+## Returns an array with the registered items.
 func keys() -> PackedInt64Array:
 	var array : PackedInt64Array = _m_item_registry_entries_dictionary.keys()
 	return array
@@ -254,14 +256,16 @@ func set_item_metadata_data(p_item_id : int, p_metadata : Dictionary) -> void:
 	item_modified.emit(p_item_id)
 
 
-## Returns the specified metadata from the item registry entry.
+## Returns the specified metadata for the item.
 func get_item_metadata(p_item_id : int, p_key : Variant, p_default_value : Variant = null) -> Variant:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
 	return item_metadata.get(p_key, p_default_value)
 
 
-## Returns a reference to the internal metadata dictionary.
+## Returns a reference to the internal metadata dictionary.[br]
+## [br]
+## [color=yellow]Warning:[/color] Use with caution. Modifying this dictionary will directly modify the installed metadata for the item.
 func get_item_metadata_data(p_item_id : int) -> Dictionary:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
@@ -281,14 +285,14 @@ func has_item_metadata_key(p_item_id : int, p_key : Variant) -> bool:
 	return item_metadata.has(p_key)
 
 
-## Returns true if the item registry entry has some metadata.
+## Returns true if the item has some metadata.
 func has_item_metadata(p_item_id : int) -> bool:
 	var item_registry_entry_dictionary : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	var item_metadata : Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, {})
 	return not item_metadata.is_empty()
 
 
-## Attaches the specified metadata to the item registry.
+## Sets the specified metadata for the item registry.
 func set_registry_metadata(p_key : Variant, p_value : Variant) -> void:
 	var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
 	metadata[p_key] = p_value
@@ -340,9 +344,9 @@ func append(p_item_registry : ItemRegistry) -> void:
 		add_item(item_id, name, description, icon, stack_capacity, stack_count, metadata)
 
 
-## Returns a reference to the internal dictionary where item registry entry data is stored.[br]
+## Returns a reference to the internal dictionary where all the item registry data is stored.[br]
 ## [br]
-## [color=yellow]Warning:[/color] Use with caution. Modifying this dictionary will directly modify the item registry entry entry data.
+## [color=yellow]Warning:[/color] Use with caution. Modifying this dictionary will directly modify the item registry data.
 func get_data() -> Dictionary:
 	return _m_item_registry_dictionary
 
@@ -404,7 +408,7 @@ func __inject(p_item_id : int, p_item_registry_entry_dictionary : Dictionary) ->
 		_m_item_registry_entries_dictionary[p_item_id] = p_item_registry_entry_dictionary
 
 
-func __synchronize_changes_with_the_debugger(p_item_id : int) -> void:
+func __synchronize_item_data_with_the_debugger(p_item_id : int) -> void:
 	if EngineDebugger.is_active():
 		# NOTE: Do not use the item_registry API directly here when setting values to avoid sending unnecessary data to the debugger about the duplicated item_registry entry being sent to display
 
@@ -434,7 +438,7 @@ func __synchronize_changes_with_the_debugger(p_item_id : int) -> void:
 		EngineDebugger.send_message("inventory_manager:item_registry_sync_item_registry_entry", [item_registry_manager_id, p_item_id, duplicated_item_registry_entry_dictionary])
 
 
-## Returns a human-readable dictionary for the specified item ID.
+## Returns a human-readable dictionary for the item.
 func prettify(p_item_id  : int) -> Dictionary:
 	var item_data : Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, {})
 	var prettified_item_data : Dictionary = item_data.duplicate(true)
@@ -469,4 +473,4 @@ func _init() -> void:
 	if EngineDebugger.is_active():
 		# Register with the debugger
 		EngineDebugger.send_message("inventory_manager:register_item_registry", [get_instance_id()])
-		var _success : int = item_modified.connect(__synchronize_changes_with_the_debugger)
+		var _success : int = item_modified.connect(__synchronize_item_data_with_the_debugger)
