@@ -89,6 +89,13 @@ func add_item(p_item_id : int, p_name : String = "", p_description : String = ""
 	item_modified.emit(p_item_id)
 
 
+## Removes the item and all the associated data from the registry.
+func remove_item(p_item_id : int) -> void:
+	var success : bool = _m_item_registry_entries_dictionary.erase(p_item_id)
+	if success:
+		item_modified.emit(p_item_id)
+
+
 ## Returns true if the item is registered. Returns false otherwise.
 func has_item(p_item_id : int) -> bool:
 	return _m_item_registry_entries_dictionary.has(p_item_id)
@@ -320,13 +327,6 @@ func get_registry_metadata_data() -> Dictionary:
 func has_registry_metadata() -> bool:
 	var metadata : Dictionary = _m_item_registry_dictionary.get(_registry_key.METADATA, {})
 	return not metadata.is_empty()
-
-
-## Removes the registry entry given for the specified item ID.
-func erase(p_item_id : int) -> void:
-	var success : bool = _m_item_registry_entries_dictionary.erase(p_item_id)
-	if success:
-		item_modified.emit(p_item_id)
 
 
 ## Appends all the items of another item registry.
