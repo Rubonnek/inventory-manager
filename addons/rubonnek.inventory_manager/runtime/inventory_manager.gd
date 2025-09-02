@@ -370,6 +370,10 @@ func swap(p_first_slot_number : int, p_second_slot_number : int) -> void:
 		_m_item_slots_packed_array[second_slot_item_id_index] = first_slot_item_id
 		_m_item_slots_packed_array[second_slot_item_amount_index] = first_slot_item_amount
 
+		# Update item id slot tracker
+		__remove_item_id_slot_from_tracker(first_slot_item_id, p_first_slot_number)
+		__add_item_id_slot_to_tracker(first_slot_item_id, p_second_slot_number)
+
 		# Clear
 		var first_slot_item_amount_index : int = __calculate_slot_item_amount_index(p_first_slot_number)
 		_m_item_slots_packed_array[first_slot_item_amount_index] = 0
@@ -385,6 +389,10 @@ func swap(p_first_slot_number : int, p_second_slot_number : int) -> void:
 		# Inject data
 		_m_item_slots_packed_array[first_slot_item_id_index] = second_slot_item_id
 		_m_item_slots_packed_array[first_slot_item_amount_index] = second_slot_item_amount
+
+		# Update item id slot tracker
+		__remove_item_id_slot_from_tracker(second_slot_item_id, p_second_slot_number)
+		__add_item_id_slot_to_tracker(second_slot_item_id, p_first_slot_number)
 
 		# Clear
 		var second_slot_item_amount_index : int = __calculate_slot_item_amount_index(p_second_slot_number)
@@ -407,6 +415,12 @@ func swap(p_first_slot_number : int, p_second_slot_number : int) -> void:
 		_m_item_slots_packed_array[first_slot_item_amount_index] = second_slot_item_amount
 		_m_item_slots_packed_array[second_slot_item_id_index] = first_slot_item_id
 		_m_item_slots_packed_array[second_slot_item_amount_index] = first_slot_item_amount
+
+		# Update item id slot tracker
+		__remove_item_id_slot_from_tracker(first_slot_item_id, p_first_slot_number)
+		__add_item_id_slot_to_tracker(first_slot_item_id, p_second_slot_number)
+		__remove_item_id_slot_from_tracker(second_slot_item_id, p_second_slot_number)
+		__add_item_id_slot_to_tracker(second_slot_item_id, p_first_slot_number)
 
 	slot_modified.emit(p_first_slot_number)
 	slot_modified.emit(p_second_slot_number)
