@@ -180,7 +180,7 @@ func on_editor_debugger_plugin_capture(p_message : String, p_data : Array) -> bo
 			__refresh_item_slots_if_needed(stored_inventory_manager)
 			return true
 
-		"inventory_manager:sync_item_slot":
+		"inventory_manager:add_items_to_slot":
 			var column : int = 0
 			var inventory_manager_id : int = p_data[0]
 			var inventory_manager_tree_item : TreeItem = _m_remote_inventory_manager_to_its_tree_item_map[inventory_manager_id]
@@ -190,7 +190,25 @@ func on_editor_debugger_plugin_capture(p_message : String, p_data : Array) -> bo
 			var remote_item_slot_index : int = p_data[1]
 			var remote_item_id : int = p_data[2]
 			var remote_item_amount : int = p_data[3]
-			stored_inventory_manager.__inject(remote_item_slot_index, remote_item_id, remote_item_amount)
+			stored_inventory_manager.__allocate_if_needed(remote_item_slot_index)
+			var _ignore : int = stored_inventory_manager.__add_items_to_slot(remote_item_slot_index, remote_item_id, remote_item_amount)
+
+			# Refresh the item entries if needed:
+			__refresh_item_slots_if_needed(stored_inventory_manager)
+			return true
+
+		"inventory_manager:remove_items_from_slot":
+			var column : int = 0
+			var inventory_manager_id : int = p_data[0]
+			var inventory_manager_tree_item : TreeItem = _m_remote_inventory_manager_to_its_tree_item_map[inventory_manager_id]
+			var stored_inventory_manager : InventoryManager = inventory_manager_tree_item.get_metadata(column)
+
+			# Inject the remote item entry data:
+			var remote_item_slot_index : int = p_data[1]
+			var remote_item_id : int = p_data[2]
+			var remote_item_amount : int = p_data[3]
+			stored_inventory_manager.__allocate_if_needed(remote_item_slot_index)
+			var _ignore : int = stored_inventory_manager.__remove_items_from_slot(remote_item_slot_index, remote_item_id, remote_item_amount)
 
 			# Refresh the item entries if needed:
 			__refresh_item_slots_if_needed(stored_inventory_manager)
@@ -208,7 +226,6 @@ func on_editor_debugger_plugin_capture(p_message : String, p_data : Array) -> bo
 			# Refresh the item entries if needed:
 			__refresh_item_slots_if_needed(stored_inventory_manager)
 			return true
-
 
 		"inventory_manager:swap":
 			var column : int = 0

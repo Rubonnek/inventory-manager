@@ -623,6 +623,9 @@ func __add_items_to_slot(p_slot_index : int, p_item_id : int, p_amount : int) ->
 		item_added.emit(p_slot_index, p_item_id)
 	slot_modified.emit(p_slot_index)
 	var remaining_amount_to_add : int = p_amount - amount_to_add
+	if EngineDebugger.is_active():
+		var item_manager_id : int = get_instance_id()
+		EngineDebugger.send_message("inventory_manager:add_items_to_slot", [item_manager_id, p_slot_index, p_item_id, p_amount])
 	return remaining_amount_to_add
 
 
@@ -648,6 +651,9 @@ func __remove_items_from_slot(p_slot_index : int, p_item_id : int, p_amount : in
 		item_removed.emit(p_slot_index, p_item_id)
 	slot_modified.emit(p_slot_index)
 	var remaining_amount_to_remove : int = p_amount - amount_to_remove
+	if EngineDebugger.is_active():
+		var item_manager_id : int = get_instance_id()
+		EngineDebugger.send_message("inventory_manager:remove_items_from_slot", [item_manager_id, p_slot_index, p_item_id, p_amount])
 	return remaining_amount_to_remove
 
 
@@ -1076,22 +1082,10 @@ func __create_excess_items(p_item_id : int, p_amount : int) -> ExcessItems:
 	return ExcessItems.new(_m_item_registry, excess_items_array)
 
 
-# Function used by the debugger only. Used to inject data without triggering any unnecessary signals.
-func __inject(p_slot_index : int, p_item_id : int , p_item_amount : int) -> void:
+# Function used by the debugger only. Used to increase the InventoryManager data arrays if needed.
+func __allocate_if_needed(p_slot_index : int) -> void:
 	if not __is_slot_allocated(p_slot_index):
 		__increase_size(p_slot_index)
-	var item_id_index : int = __calculate_slot_item_id_index(p_slot_index)
-	var item_amount_index : int = __calculate_slot_item_amount_index(p_slot_index)
-	_m_item_slots_packed_array[item_id_index] = p_item_id
-	_m_item_slots_packed_array[item_amount_index] = p_item_amount
-
-
-# Every time an item slot is modified, synchronize it with the debugger
-func __synchronize_slot_with_debugger_when_modified(p_slot_index : int) -> void:
-	var item_manager_id : int = get_instance_id()
-	var item_id : int = __get_slot_item_id(p_slot_index)
-	var item_amount : int = __get_slot_item_amount(p_slot_index)
-	EngineDebugger.send_message("inventory_manager:sync_item_slot", [item_manager_id, p_slot_index, item_id, item_amount])
 
 
 # Every time an item slot is modified, synchronize it with the debugger
@@ -1140,8 +1134,8 @@ func __add_item_id_slot_to_tracker(p_item_id : int, p_slot_index : int) -> void:
 # Removes a slot from the item id slot tracker
 func __remove_item_id_slot_from_tracker(p_item_id : int, p_slot_index : int) -> void:
 	var item_id_slots_array : PackedInt64Array = _m_item_slots_tracker[p_item_id]
-	var slot_index : int = item_id_slots_array.find(p_slot_index)
-	item_id_slots_array.remove_at(slot_index)
+	var index_to_remove : int = item_id_slots_array.find(p_slot_index)
+	item_id_slots_array.remove_at(index_to_remove)
 	if item_id_slots_array.is_empty():
 		var _success : bool = _m_item_slots_tracker.erase(p_item_id)
 
@@ -1164,5 +1158,4 @@ func _init(p_item_registry : ItemRegistry = null) -> void:
 		EngineDebugger.send_message("inventory_manager:register_inventory_manager", [get_instance_id(), name, path, _m_item_registry.get_instance_id()])
 
 		# Update remote
-		var _success : int = slot_modified.connect(__synchronize_slot_with_debugger_when_modified)
-		_success = inventory_cleared.connect(__synchronize_inventory_with_debugger_when_cleared)
+		var _success : int = inventory_cleared.connect(__synchronize_inventory_with_debugger_when_cleared)
