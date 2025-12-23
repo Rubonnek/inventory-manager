@@ -427,7 +427,8 @@ func swap(p_first_slot_number : int, p_second_slot_number : int) -> void:
 
 	# Sync change with the debugger:
 	if EngineDebugger.is_active():
-		EngineDebugger.send_message("inventory_manager:swap", [get_instance_id(), p_first_slot_number, p_second_slot_number])
+		if not has_meta(&"deregistered"):
+			EngineDebugger.send_message("inventory_manager:swap", [get_instance_id(), p_first_slot_number, p_second_slot_number])
 
 
 ## Transfers items from first specified slot to the second specified slot.
@@ -601,7 +602,8 @@ func resize(p_new_slot_count : int) -> Array[ExcessItems]:
 
 	# Synchronize change with the debugger:
 	if EngineDebugger.is_active():
-		EngineDebugger.send_message("inventory_manager:resize", [get_instance_id(), p_new_slot_count])
+		if not has_meta(&"deregistered"):
+			EngineDebugger.send_message("inventory_manager:resize", [get_instance_id(), p_new_slot_count])
 	return excess_items_array
 
 
@@ -624,8 +626,9 @@ func __add_items_to_slot(p_slot_index : int, p_item_id : int, p_amount : int) ->
 	slot_modified.emit(p_slot_index)
 	var remaining_amount_to_add : int = p_amount - amount_to_add
 	if EngineDebugger.is_active():
-		var item_manager_id : int = get_instance_id()
-		EngineDebugger.send_message("inventory_manager:add_items_to_slot", [item_manager_id, p_slot_index, p_item_id, p_amount])
+		if not has_meta(&"deregistered"):
+			var item_manager_id : int = get_instance_id()
+			EngineDebugger.send_message("inventory_manager:add_items_to_slot", [item_manager_id, p_slot_index, p_item_id, p_amount])
 	return remaining_amount_to_add
 
 
@@ -652,8 +655,9 @@ func __remove_items_from_slot(p_slot_index : int, p_item_id : int, p_amount : in
 	slot_modified.emit(p_slot_index)
 	var remaining_amount_to_remove : int = p_amount - amount_to_remove
 	if EngineDebugger.is_active():
-		var item_manager_id : int = get_instance_id()
-		EngineDebugger.send_message("inventory_manager:remove_items_from_slot", [item_manager_id, p_slot_index, p_item_id, p_amount])
+		if not has_meta(&"deregistered"):
+			var item_manager_id : int = get_instance_id()
+			EngineDebugger.send_message("inventory_manager:remove_items_from_slot", [item_manager_id, p_slot_index, p_item_id, p_amount])
 	return remaining_amount_to_remove
 
 
@@ -769,7 +773,8 @@ func get_item_registry() -> ItemRegistry:
 func set_name(p_name : String) -> void:
 	set_meta(&"name", p_name)
 	if EngineDebugger.is_active():
-		EngineDebugger.send_message("inventory_manager:set_name", [get_instance_id(), p_name])
+		if not has_meta(&"deregistered"):
+			EngineDebugger.send_message("inventory_manager:set_name", [get_instance_id(), p_name])
 
 
 ## Gets the name of the manager.
@@ -857,7 +862,8 @@ func set_data(p_data : Dictionary) -> void:
 
 	# Synchronize change with the debugger:
 	if EngineDebugger.is_active():
-		EngineDebugger.send_message("inventory_manager:set_data", [get_instance_id(), _m_inventory_manager_dictionary])
+		if not has_meta(&"deregistered"):
+			EngineDebugger.send_message("inventory_manager:set_data", [get_instance_id(), _m_inventory_manager_dictionary])
 
 
 ## Automatically applies the item registry constraints to the inventory. Returns an array of excess items found, if any.
@@ -1053,7 +1059,8 @@ func organize(p_item_ids_array : PackedInt64Array = []) -> void:
 		push_warning("InventoryManager: slot array resize did not go as expected within organize(). Got new size %d, but expected %d." % [_m_item_slots_packed_array.size(), expected_size])
 
 	if EngineDebugger.is_active():
-		EngineDebugger.send_message("inventory_manager:organize", [get_instance_id(), p_item_ids_array])
+		if not has_meta(&"deregistered"):
+			EngineDebugger.send_message("inventory_manager:organize", [get_instance_id(), p_item_ids_array])
 
 
 ## Clears the inventory. Keeps the current size.
@@ -1068,6 +1075,9 @@ func clear() -> void:
 ## Deregisters the inventory manager from the debugger.
 func deregister() -> void:
 	if EngineDebugger.is_active():
+		set_meta(&"deregistered", true)
+		if inventory_cleared.is_connected(__synchronize_inventory_with_debugger_when_cleared):
+			inventory_cleared.disconnect(__synchronize_inventory_with_debugger_when_cleared)
 		EngineDebugger.send_message("inventory_manager:deregister_inventory_manager", [get_instance_id()])
 
 

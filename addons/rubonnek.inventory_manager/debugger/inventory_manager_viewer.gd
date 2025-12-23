@@ -126,18 +126,23 @@ func on_editor_debugger_plugin_capture(p_message : String, p_data : Array) -> bo
 
 		"inventory_manager:deregister_inventory_manager":
 			var inventory_manager_id : int = p_data[0]
-			var inventory_manager_tree_item : TreeItem = _m_remote_inventory_manager_to_its_tree_item_map[inventory_manager_id]
 
-			# Select nothing on the inventory manager list if the currently selected inventory manager is the same we are deregistering:
-			var selected_tree_item : TreeItem = inventory_manager_viewer_manager_selection_tree_.get_selected()
-			if is_instance_valid(selected_tree_item):
-				if selected_tree_item == inventory_manager_tree_item:
-					# Clear the inventory manager selection
-					__on_inventory_manager_selection_tree_nothing_selected()
+			if _m_remote_inventory_manager_to_its_tree_item_map.has(inventory_manager_id):
+				var inventory_manager_tree_item : TreeItem = _m_remote_inventory_manager_to_its_tree_item_map[inventory_manager_id]
 
-			# Clear the cache and free the TreeItem
-			var _success : bool = _m_remote_inventory_manager_to_its_tree_item_map.erase(inventory_manager_id)
-			inventory_manager_tree_item.free()
+				# Select nothing on the inventory manager list if the currently selected inventory manager is the same we are deregistering:
+				var selected_tree_item : TreeItem = inventory_manager_viewer_manager_selection_tree_.get_selected()
+				if is_instance_valid(selected_tree_item):
+					if selected_tree_item == inventory_manager_tree_item:
+						# Clear the inventory manager selection
+						__on_inventory_manager_selection_tree_nothing_selected()
+
+				# Clear the cache and free the TreeItem
+				var _success : bool = _m_remote_inventory_manager_to_its_tree_item_map.erase(inventory_manager_id)
+				inventory_manager_tree_item.free()
+			else:
+				push_warning("InventoryManagerViewer: Could not find inventory manager with instance id '%d' to deregister it." % inventory_manager_id)
+
 			return true
 
 		"inventory_manager:resize":
