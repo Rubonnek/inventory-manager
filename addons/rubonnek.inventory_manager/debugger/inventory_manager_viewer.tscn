@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://addons/rubonnek.inventory_manager/debugger/inventory_manager_viewer.gd" id="1_tvtkg"]
 
-[node name="InventoryManager" type="PanelContainer" node_paths=PackedStringArray("inventory_manager_viewer_manager_selection_line_edit_", "inventory_manager_viewer_manager_selection_tree_", "inventory_manager_viewer_item_slots_tree_", "inventory_manager_viewer_item_slots_view_warning_label_", "inventory_manager_viewer_inventory_data_view_text_edit_", "inventory_manager_viewer_inventory_data_view_warning_label_")]
+[node name="Inventory Manager" type="PanelContainer" node_paths=PackedStringArray("inventory_manager_viewer_manager_selection_line_edit_", "inventory_manager_viewer_manager_selection_tree_", "inventory_manager_viewer_item_slots_tree_", "inventory_manager_viewer_item_slots_view_warning_label_", "inventory_manager_viewer_inventory_data_view_text_edit_", "inventory_manager_viewer_inventory_data_view_warning_label_")]
 custom_minimum_size = Vector2(0, 240)
 anchors_preset = 15
 anchor_right = 1.0
