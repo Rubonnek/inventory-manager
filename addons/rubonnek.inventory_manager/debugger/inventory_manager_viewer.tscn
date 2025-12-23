@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://c7icg0tbtwioq"]
+[gd_scene load_steps=3 format=3 uid="uid://c7icg0tbtwioq"]
 
 [ext_resource type="Script" path="res://addons/rubonnek.inventory_manager/debugger/inventory_manager_viewer.gd" id="1_tvtkg"]
+[ext_resource type="StyleBox" uid="uid://r1gbuoavfq15" path="res://addons/rubonnek.inventory_manager/debugger/tree_panel_style_box_flat.tres" id="2_527hr"]
 
 [node name="Inventory Manager" type="PanelContainer" node_paths=PackedStringArray("inventory_manager_viewer_manager_selection_line_edit_", "inventory_manager_viewer_manager_selection_tree_", "inventory_manager_viewer_item_slots_tree_", "inventory_manager_viewer_item_slots_view_warning_label_", "inventory_manager_viewer_inventory_data_view_text_edit_", "inventory_manager_viewer_inventory_data_view_warning_label_")]
 custom_minimum_size = Vector2(0, 240)
@@ -32,6 +33,7 @@ placeholder_text = "Filter Managers"
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 size_flags_vertical = 3
+theme_override_styles/panel = ExtResource("2_527hr")
 hide_root = true
 
 [node name="InventoryManagerViewerHSplitContainer" type="HSplitContainer" parent="InventoryManagerViewerHSplitContainer"]
@@ -49,6 +51,7 @@ horizontal_alignment = 1
 [node name="InventoryManagerViewerItemSlotsTree" type="Tree" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsVBoxContainer"]
 layout_mode = 2
 size_flags_vertical = 3
+theme_override_styles/panel = ExtResource("2_527hr")
 columns = 2
 column_titles_visible = true
 hide_root = true
@@ -76,6 +79,7 @@ size_flags_horizontal = 3
 [node name="InventoryManagerViewerInventoryDataViewTextEditLabel" type="TextEdit" parent="InventoryManagerViewerHSplitContainer/InventoryManagerViewerHSplitContainer/InventoryManagerViewerItemSlotsViewTabContainer/Slot Data"]
 layout_mode = 2
 size_flags_vertical = 3
+theme_override_colors/background_color = Color(0.121569, 0.121569, 0.121569, 1)
 editable = false
 deselect_on_focus_loss_enabled = false
 drag_and_drop_selection_enabled = false
