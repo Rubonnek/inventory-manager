@@ -5,11 +5,16 @@
 ![GitHub Release](https://img.shields.io/github/v/release/Rubonnek/inventory-manager?label=Current%20Release)
 ![Github Downloads](https://img.shields.io/github/downloads/Rubonnek/inventory-manager/total?logo=github&label=GitHub%20Downloads)
 
-A minimalistic inventory manager for the Godot Game Engine.
+A comprehensive inventory management system for the Godot Game Engine, featuring stacking, slot operations, dynamic resizing, and runtime debugging.
 
 ## :star: Features
 
 - :convenience_store: Easily add and remove items with variable stack sizes and stack count limits
+- :arrows_counterclockwise: Swap and transfer items between slots for flexible management
+- :recycle: Organize inventory to consolidate stacks and maximize space usage
+- :arrow_up_down: Dynamic inventory resizing, including support for infinite size
+- :signal_strength: Event-driven architecture with signals for item additions, removals, and modifications
+- :shield: Built-in sanity checks and automatic enforcement of registry constraints
 - :art: Easy to customize -- bring your own GUI nodes
 - :hammer_and_wrench: Inventory viewer included at runtime in a debugger panel
 
