@@ -735,7 +735,7 @@ func __increase_size(p_slot_index : int) -> void:
 		push_warning("InventoryManager: Unable to resize inventory properly. New inventory size is: %d. Expected size: %d." % [_m_item_slots_packed_array.size(), expected_new_size])
 
 
-# Returns the item ID for the given item slot. Returns -1 on empty slots.
+# Returns the item ID for the given item slot.
 # NOTE: The slot number is assumed to be within bounds in this function.
 func __get_slot_item_id(p_slot_index : int) -> int:
 	var p_slot_item_id_index : int = __calculate_slot_item_id_index(p_slot_index)
