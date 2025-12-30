@@ -432,8 +432,8 @@ func swap(p_first_slot_number : int, p_second_slot_number : int) -> void:
 			EngineDebugger.send_message("inventory_manager:swap", [get_instance_id(), p_first_slot_number, p_second_slot_number])
 
 
-## Transfers items from first specified slot to the second specified slot.
-func transfer(p_first_slot_number : int, p_first_amount : int, p_second_slot_number : int) -> void:
+## Transfers items from first specified slot to the second specified slot. Transfers are only possible if both slots have the same item ID or the second slot is empty.
+func transfer(p_first_slot_number : int, p_first_amount : int, p_second_slot_number : int) -> ExcessItems:
 	if not is_slot_valid(p_first_slot_number):
 		push_warning("InventoryManager: Attempted to transfer an item from invalid slot '%d'. Ignoring call." % [p_first_slot_number])
 		return
@@ -456,22 +456,86 @@ func transfer(p_first_slot_number : int, p_first_amount : int, p_second_slot_num
 	var second_item_id : int = __get_slot_item_id(p_second_slot_number)
 
 	# Check if it's possible to transfer:
-	if first_item_id == second_item_id or second_item_id < 0:
-		# Then it's possible to transfer. Check for amounts.
+	var is_second_slot_empty : bool = __is_slot_empty(p_second_slot_number)
+	if first_item_id == second_item_id or is_second_slot_empty:
+		# Then it's possible to transfer. Do a sanity check on the amounts.
 		var first_slot_item_amount : int = __get_slot_item_amount(p_first_slot_number)
 		var target_amount : int = clampi(p_first_amount, 0, first_slot_item_amount)
+
+		# Is this a total transfer?
 		if target_amount != first_slot_item_amount:
+			# This is not a total transfer of the item from one slot to another.
+
+			# Check if we are adding a new stack during the partial transfer
+			var are_we_creating_a_new_stack : int = 0
+			if is_second_slot_empty:
+				# We are creating a new stack
+				are_we_creating_a_new_stack = 1
+
+			# Check if we go over the stack count limit on this transfer operation.
 			var current_stack_count : int = _m_item_stack_count_tracker[first_item_id]
-			var max_stack_count : int = _m_item_registry.get_stack_count(first_item_id)
+			var registered_stack_count : int = _m_item_registry.get_stack_count(first_item_id)
 			var is_stack_count_limited : bool = _m_item_registry.is_stack_count_limited(first_item_id)
-			if is_stack_count_limited and current_stack_count + 1 > max_stack_count:
-				push_warning("InventoryManager: Attempted partial item amount transfer on item id (%d) from slot '%d' to slot '%d' but this transfer violates the item's maximum stack count (%d). After the transfer the stack count would have been %d. Ignoring call." % [first_item_id, p_first_slot_number, p_second_slot_number, max_stack_count, current_stack_count + 1])
-				return
-		var _ignore : int = __remove_items_from_slot(p_first_slot_number, first_item_id, target_amount)
-		_ignore = __add_items_to_slot(p_second_slot_number, first_item_id, target_amount)
+			if is_stack_count_limited and current_stack_count + are_we_creating_a_new_stack > registered_stack_count:
+				push_warning("InventoryManager: Attempted partial item amount transfer on item id (%d) from slot '%d' to slot '%d' but this transfer violates the item's maximum stack count (%d). After the transfer the stack count would have been %d. Ignoring call." % [first_item_id, p_first_slot_number, p_second_slot_number, registered_stack_count, current_stack_count + are_we_creating_a_new_stack])
+				return null
+
+			# We don't go over the stack count limit. Perform the transfer.
+
+			# Let's remove the items from the first slot.
+			var remainder : int = __remove_items_from_slot(p_first_slot_number, first_item_id, target_amount)
+			assert(remainder == 0, "InventoryManager: removal from partial transfer yielded a non zero remainder. This should not happen at all.")
+
+			# Add items to the second slot
+			remainder = __add_items_to_slot(p_second_slot_number, first_item_id, target_amount)
+
+			# Is there a remainder?
+			if remainder != 0:
+				# There is. We've hit the maximum stack capacity on the second slot.
+
+				# We've already checked that we don't go over the stack count limit.
+
+				# Add the items to the first slot.
+				remainder = __add_items_to_slot(p_first_slot_number, first_item_id, remainder)
+				if remainder != 0:
+					push_warning("InventoryManager: Attempted partial item amount transfer on item id (%d) from slot '%d' to slot '%d' Resulted in excess items after completing the operation. The item amounts found in the inventory seem to be higher than allowed by the item registry. You may want to run organize() to fix this possible on the remaining slots." % [first_item_id, p_first_slot_number, p_second_slot_number])
+					return __create_excess_items(first_item_id, remainder)
+
+			# The transfer operation completed successfully
+			return null
+		else:
+			# This is a total transfer attempt. No need to check if we are creating a new stack for now.
+
+			# Let's remove all the items from the first slot.
+			var remainder : int = __remove_items_from_slot(p_first_slot_number, first_item_id, target_amount)
+			assert(remainder == 0, "InventoryManager: removal from total transfer yielded a non zero remainder. This should not happen at all.")
+
+			# Add items to the second slot
+			remainder = __add_items_to_slot(p_second_slot_number, first_item_id, target_amount)
+
+			# Is there a remainder?
+			if remainder != 0:
+				# There is. We've hit the maximum stack capacity on the second slot.
+
+				# Check if we go over the stack count limit on the remainder of this transfer operation.
+				var current_stack_count : int = _m_item_stack_count_tracker[first_item_id]
+				var registered_stack_count : int = _m_item_registry.get_stack_count(first_item_id)
+				var is_stack_count_limited : bool = _m_item_registry.is_stack_count_limited(first_item_id)
+				if is_stack_count_limited and current_stack_count + 1 > registered_stack_count:
+					push_warning("InventoryManager: Attempted partial item amount transfer on item id (%d) from slot '%d' to slot '%d' but this transfer violates the item's maximum stack count (%d). After the transfer the stack count would have been %d. Returning excess items." % [first_item_id, p_first_slot_number, p_second_slot_number, registered_stack_count, current_stack_count + 1])
+					return __create_excess_items(first_item_id, remainder)
+
+				# We don't go over the stack count limit. Add the items to the slot.
+				remainder = __add_items_to_slot(p_first_slot_number, first_item_id, remainder)
+				if remainder != 0:
+					push_warning("InventoryManager: Attempted partial item amount transfer on item id (%d) from slot '%d' to slot '%d' Resulted in excess items after completing the operation. The item amounts found in the inventory seem to be higher than allowed by the item registry. You may want to run organize() to fix this possible on the remaining slots." % [first_item_id, p_first_slot_number, p_second_slot_number])
+					return __create_excess_items(first_item_id, remainder)
+
+			# The transfer operation completed successfully
+			return null
 	else:
 		push_warning("InventoryManager: Attempted to transfer an item id (%d) from slot '%d' to slot '%d' with mismatching IDs. Ignoring call." % [first_item_id, p_first_slot_number, p_second_slot_number])
-		return
+		return null
 
 
 ## Reserves memory up to the desired number of slots in memory as long as the inventory size allows. Returns OK when successful.
