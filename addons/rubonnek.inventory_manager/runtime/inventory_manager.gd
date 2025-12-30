@@ -92,6 +92,7 @@ func add(p_item_id : int, p_amount : int, p_start_slot_number : int = -1, p_part
 
 	var registered_stack_count : int = _m_item_registry.get_stack_count(p_item_id)
 	var is_stack_count_limited : bool = _m_item_registry.is_stack_count_limited(p_item_id)
+	var current_stack_count : int = _m_item_stack_count_tracker.get(p_item_id, 0)
 	if p_start_slot_number < 0:
 		# Then a start index was not passed.
 		# First fill all the slots with available stack space while skipping empty slots
@@ -100,12 +101,13 @@ func add(p_item_id : int, p_amount : int, p_start_slot_number : int = -1, p_part
 			p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount)
 			if p_amount == 0:
 				return null
-			if is_stack_count_limited:
-				# We've stumbled upon the maximum number of stacks and added items to all of them. No more items can be added.
-				return __create_excess_items(p_item_id, p_amount)
 
 		# We still have some more item amount to add. We'll need to create the item slots for these.
-		var current_stack_count : int = _m_item_stack_count_tracker.get(p_item_id, 0)
+		# Check if the stack count is limited -- let's make sure we don't go over the number of registered stack count.
+		if is_stack_count_limited and current_stack_count >= registered_stack_count:
+			# We've stumbled upon the maximum number of stacks and added items to all of them. No more items can be added.
+			return __create_excess_items(p_item_id, p_amount)
+
 		if is_infinite():
 			# Add items to empty slots either until we hit the stack count limit or the amount of items remainind to add reaches 0.
 			var slot_number : int = 0
@@ -153,7 +155,6 @@ func add(p_item_id : int, p_amount : int, p_start_slot_number : int = -1, p_part
 			return __create_excess_items(p_item_id, p_amount)
 	else:
 		# If the current stack capacity is greater or equal to the registered size, no more stacks can be added.
-		var current_stack_count : int = _m_item_stack_count_tracker.get(p_item_id, 0)
 		if is_stack_count_limited and current_stack_count >= registered_stack_count:
 			# No more stacks can be added. We can only add items to the current stacks
 			# Let's do so:
