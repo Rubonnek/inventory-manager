@@ -26,15 +26,15 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE         |
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                    |
 #============================================================================
-
 extends RefCounted
+
 class_name ExcessItems
 ## Represents the amount of items not added to, or not removed from, an inventory.
 ##
 ## The item amount is always positive and not clamped.
 
-var _m_item_registry : ItemRegistry
-var _m_item_slot_data : PackedInt64Array
+var _m_item_registry: ItemRegistry
+var _m_item_slot_data: PackedInt64Array
 
 
 ## Returns the item ID.
@@ -43,7 +43,7 @@ func get_item_id() -> int:
 
 
 ## Sets the item_amount.
-func set_amount(p_amount : int) -> void:
+func set_amount(p_amount: int) -> void:
 	_m_item_slot_data[1] = p_amount
 
 
@@ -76,6 +76,6 @@ func _to_string() -> String:
 	return "<ExcessItems#%d> Item ID: %d, Name: \"%s\", Amount: %d" % [get_instance_id(), get_item_id(), get_name(), get_amount()]
 
 
-func _init(p_item_registry : ItemRegistry, p_item_slot_data : PackedInt64Array) -> void:
+func _init(p_item_registry: ItemRegistry, p_item_slot_data: PackedInt64Array) -> void:
 	_m_item_registry = p_item_registry
 	_m_item_slot_data = p_item_slot_data
