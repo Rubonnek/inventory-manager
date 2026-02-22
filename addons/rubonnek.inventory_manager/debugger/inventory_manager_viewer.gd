@@ -52,18 +52,18 @@ func on_editor_debugger_plugin_capture(p_message: String, p_data: Array) -> bool
 		"inventory_manager:item_registry_sync_item_registry_entry":
 			var item_registry_id: int = p_data[0]
 			var item_id: int = p_data[1]
-			var item_registry_data: Dictionary = p_data[2]
+			var item_registry_entry_data: Dictionary = p_data[2]
 
 			# Convert the image bytes back into the image object:
-			if item_registry_data.has(ItemRegistry._item_entry_key.ICON):
-				var bytes: PackedByteArray = item_registry_data[ItemRegistry._item_entry_key.ICON]
+			if item_registry_entry_data.has(ItemRegistry._item_entry_key.ICON):
+				var bytes: PackedByteArray = item_registry_entry_data[ItemRegistry._item_entry_key.ICON]
 				var image: Image = bytes_to_var_with_objects(bytes)
 				image.resize(16, 16)
 				var texture: ImageTexture = ImageTexture.create_from_image(image)
-				item_registry_data[ItemRegistry._item_entry_key.ICON] = texture
+				item_registry_entry_data[ItemRegistry._item_entry_key.ICON] = texture
 
 			var item_registry: ItemRegistry = _m_remote_item_registry_cache[item_registry_id]
-			item_registry.__inject(item_id, item_registry_data)
+			item_registry.__inject(item_id, item_registry_entry_data)
 			return true
 		"inventory_manager:item_registry_set_data":
 			var item_registry_id: int = p_data[0]
@@ -74,10 +74,10 @@ func on_editor_debugger_plugin_capture(p_message: String, p_data: Array) -> bool
 			for item_id: int in item_registry_entries_data:
 				var item_registry_entry_data: Dictionary = item_registry_entries_data[item_id]
 				if item_registry_entry_data.has(ItemRegistry._item_entry_key.ICON):
-					var bytes: PackedByteArray = item_registry_data[ItemRegistry._item_entry_key.ICON]
+					var bytes: PackedByteArray = item_registry_entry_data[ItemRegistry._item_entry_key.ICON]
 					var image: Image = bytes_to_var_with_objects(bytes)
 					var texture: ImageTexture = ImageTexture.create_from_image(image)
-					item_registry_data[ItemRegistry._item_entry_key.ICON] = texture
+					item_registry_entry_data[ItemRegistry._item_entry_key.ICON] = texture
 
 			var item_registry: ItemRegistry = _m_remote_item_registry_cache[item_registry_id]
 			item_registry.set_data(item_registry_data)
@@ -163,19 +163,6 @@ func on_editor_debugger_plugin_capture(p_message: String, p_data: Array) -> bool
 			# Refresh the item entries if needed:
 			__refresh_item_slots_if_needed(stored_inventory_manager)
 			return true
-		"inventory_manager:resize":
-			var column: int = 0
-			var inventory_manager_id: int = p_data[0]
-			var inventory_manager_tree_item: TreeItem = _m_remote_inventory_manager_to_its_tree_item_map[inventory_manager_id]
-			var stored_inventory_manager: InventoryManager = inventory_manager_tree_item.get_metadata(column)
-
-			# Resize
-			var new_size: int = p_data[1]
-			var _ignore: Array[ExcessItems] = stored_inventory_manager.resize(new_size)
-
-			# Refresh the item entries if needed:
-			__refresh_item_slots_if_needed(stored_inventory_manager)
-			return true
 		"inventory_manager:add_items_to_slot":
 			var column: int = 0
 			var inventory_manager_id: int = p_data[0]
@@ -186,8 +173,9 @@ func on_editor_debugger_plugin_capture(p_message: String, p_data: Array) -> bool
 			var remote_item_slot_index: int = p_data[1]
 			var remote_item_id: int = p_data[2]
 			var remote_item_amount: int = p_data[3]
+			var remote_item_instance_data: Variant = p_data[4]
 			stored_inventory_manager.__allocate_if_needed(remote_item_slot_index)
-			var _ignore: int = stored_inventory_manager.__add_items_to_slot(remote_item_slot_index, remote_item_id, remote_item_amount)
+			var _ignore: int = stored_inventory_manager.__add_items_to_slot(remote_item_slot_index, remote_item_id, remote_item_amount, remote_item_instance_data)
 
 			# Refresh the item entries if needed:
 			__refresh_item_slots_if_needed(stored_inventory_manager)
@@ -202,8 +190,9 @@ func on_editor_debugger_plugin_capture(p_message: String, p_data: Array) -> bool
 			var remote_item_slot_index: int = p_data[1]
 			var remote_item_id: int = p_data[2]
 			var remote_item_amount: int = p_data[3]
+			var remote_item_instance_data: Variant = p_data[4]
 			stored_inventory_manager.__allocate_if_needed(remote_item_slot_index)
-			var _ignore: int = stored_inventory_manager.__remove_items_from_slot(remote_item_slot_index, remote_item_id, remote_item_amount)
+			var _ignore: int = stored_inventory_manager.__remove_items_from_slot(remote_item_slot_index, remote_item_id, remote_item_amount, remote_item_instance_data)
 
 			# Refresh the item entries if needed:
 			__refresh_item_slots_if_needed(stored_inventory_manager)
@@ -241,19 +230,6 @@ func on_editor_debugger_plugin_capture(p_message: String, p_data: Array) -> bool
 			var remote_name: String = p_data[1]
 			inventory_manager_tree_item.set_text(column, remote_name)
 			return true
-		"inventory_manager:organize":
-			var column: int = 0
-			var inventory_manager_id: int = p_data[0]
-			var inventory_manager_tree_item: TreeItem = _m_remote_inventory_manager_to_its_tree_item_map[inventory_manager_id]
-			var stored_inventory_manager: InventoryManager = inventory_manager_tree_item.get_metadata(column)
-
-			# Get the function parameters and execute the action:
-			var item_ids_array: PackedInt64Array = p_data[1]
-			stored_inventory_manager.organize(item_ids_array)
-
-			# Refresh the item entries if needed:
-			__refresh_item_slots_if_needed(stored_inventory_manager)
-			return true
 
 	push_warning("InventoryManagerViewer: This should not happen. Unmanaged capture: %s %s" % [p_message, p_data])
 	return false
@@ -284,6 +260,7 @@ func __on_session_started() -> void:
 func __on_session_stopped() -> void:
 	if not is_instance_valid(inventory_manager_viewer_manager_selection_tree_.get_root()) or inventory_manager_viewer_manager_selection_tree_.get_root().get_child_count() == 0:
 		inventory_manager_viewer_item_slots_view_warning_label_.set_text(_m_original_inventory_entry_view_warning_text)
+		inventory_manager_viewer_inventory_data_view_warning_label_.set_text(_m_original_inventory_data_view_warning_text)
 
 
 func __on_inventory_manager_selection_line_edit_text_changed(p_filter: String) -> void:
@@ -404,6 +381,7 @@ func __refresh_item_slots() -> void:
 		item_slot_id_to_tree_item_map[slot_number] = inventory_tree_item
 
 	# Store the item_slot_id_to_tree_item_map -- this will be needed the next time we refresh the item entries
+	inventory_manager_viewer_item_slots_tree_.set_meta(&"item_slot_id_to_tree_item_map", item_slot_id_to_tree_item_map)
 	if selected_item_slot_id >= 0:
 		if item_slot_id_to_tree_item_map.has(selected_item_slot_id):
 			var tree_item_to_select: TreeItem = item_slot_id_to_tree_item_map[selected_item_slot_id]
@@ -457,6 +435,13 @@ func __on_inventory_view_selection_item_selected() -> void:
 		data_view += "Description: %s\n" % item_description
 		data_view += "Amount: %d\n" % inventory_manager.__get_slot_item_amount(slot_number)
 		data_view += "Stack Size: %d\n" % item_registry.get_stack_capacity(item_id)
+		# NOTE: The viewer has no use for the instance data comparator so we syncrhonize it as string. In order to bypass strict type checks, we directly access the item registry data to extract the synchronized string.
+		var item_entries_dictionary: Dictionary = item_registry.get_data().get(ItemRegistry._registry_key.ITEM_ENTRIES, {})
+		var item_entry_dictionary: Dictionary = item_entries_dictionary.get(item_id, {})
+		var instance_data_comparator: String = item_entry_dictionary.get(ItemRegistry._item_entry_key.INSTANCE_DATA_COMPARATOR, "")
+		data_view += "Instance Data Comparator: %s\n" % instance_data_comparator
+		var instance_data: Variant = inventory_manager.get_slot_item_instance_data(slot_number)
+		data_view += "Instance Data: %s\n" % str(instance_data)
 		if item_registry.has_item_metadata(item_id):
 			var item_metadata: Dictionary = item_registry.get_item_metadata_data(item_id)
 			data_view += "Item Metadata:\n%s\n" % JSON.stringify(item_metadata, "\t")

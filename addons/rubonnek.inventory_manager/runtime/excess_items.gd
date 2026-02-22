@@ -33,23 +33,37 @@ class_name ExcessItems
 ##
 ## The item amount is always positive and not clamped.
 
-var _m_item_registry: ItemRegistry
-var _m_item_slot_data: PackedInt64Array
+var _m_item_registry: ItemRegistry = null
+var _m_item_id: int = 0
+var _m_item_amount: int = 0
+var _m_instance_data: Variant = null
 
 
 ## Returns the item ID.
 func get_item_id() -> int:
-	return _m_item_slot_data[0]
+	return _m_item_id
 
 
 ## Sets the item_amount.
 func set_amount(p_amount: int) -> void:
-	_m_item_slot_data[1] = p_amount
+	_m_item_amount = p_amount
 
 
 ## Returns the item amount.
 func get_amount() -> int:
-	return _m_item_slot_data[1]
+	return _m_item_amount
+
+
+## Sets the item instance data.
+func set_instance_data(p_instance_data: Variant) -> void:
+	_m_instance_data = p_instance_data
+
+
+## Returns the item instance data that was installed in the inventory. If there wasn't any, the retuning value will fallback to the instance data from the item registry if any. Returns null when none are available.
+func get_instance_data() -> Variant:
+	if _m_instance_data == null:
+		return _m_item_registry.get_instance_data(_m_item_id)
+	return _m_instance_data
 
 
 ## Returns the associated [ItemRegistry].
@@ -73,9 +87,11 @@ func get_icon() -> Texture2D:
 
 
 func _to_string() -> String:
-	return "<ExcessItems#%d> Item ID: %d, Name: \"%s\", Amount: %d" % [get_instance_id(), get_item_id(), get_name(), get_amount()]
+	return "<ExcessItems#%d> Item ID: %d, Name: \"%s\", Amount: %d, Instance Data: %s" % [get_instance_id(), get_item_id(), get_name(), get_amount(), str(get_instance_data())]
 
 
-func _init(p_item_registry: ItemRegistry, p_item_slot_data: PackedInt64Array) -> void:
+func _init(p_item_registry: ItemRegistry, p_item_id: int, p_item_amount: int, p_instance_data: Variant = null) -> void:
 	_m_item_registry = p_item_registry
-	_m_item_slot_data = p_item_slot_data
+	_m_item_id = p_item_id
+	_m_item_amount = p_item_amount
+	_m_instance_data = p_instance_data
