@@ -50,6 +50,8 @@ enum _item_entry_key {
 	ICON,
 	STACK_CAPACITY,
 	STACK_COUNT_LIMIT,
+	INSTANCE_DATA,
+	INSTANCE_DATA_COMPARATOR,
 	METADATA,
 }
 
@@ -58,15 +60,15 @@ const DEFAULT_STACK_COUNT_LIMIT: int = 0 # a stack count of 0 means the stack co
 
 
 ## Adds an item to the registry.
-func add_item(p_item_id: int, p_name: String = "", p_description: String = "", p_icon: Texture2D = null, p_stack_capacity: int = DEFAULT_STACK_CAPACITY, p_stack_count: int = DEFAULT_STACK_COUNT_LIMIT, p_metadata: Dictionary = { }) -> void:
+func add_item(p_item_id: int, p_name: String = "", p_description: String = "", p_icon: Texture2D = null, p_stack_capacity: int = DEFAULT_STACK_CAPACITY, p_stack_count: int = DEFAULT_STACK_COUNT_LIMIT, p_metadata: Dictionary = { }, p_instance_data: Variant = null, p_instance_data_comparator: Callable = Callable()) -> void:
 	if not p_item_id >= 0:
 		push_error("ItemRegistry: Unable to add item to registry. The item IDs are required to be greater or equal to 0.")
 		return
 	if p_stack_capacity <= 0:
-		push_error("ItemRegistry: : Attempting to add item ID %d with invalid stack capacity %d. Stack capacity must be a positive integer." % p_item_id, p_stack_capacity)
+		push_error("ItemRegistry: Attempting to add item ID %d with invalid stack capacity %d. Stack capacity must be a positive integer." % [p_item_id, p_stack_capacity])
 		return
 	if p_stack_count < 0:
-		push_error("ItemRegistry: : Attempting to add item ID %d with invalid stack count %d. Stack count must be equal or greater than zero." % p_item_id, p_stack_count)
+		push_error("ItemRegistry: Attempting to add item ID %d with invalid stack count %d. Stack count must be equal or greater than zero." % [p_item_id, p_stack_count])
 		return
 	if _m_item_registry_entries_dictionary.has(p_item_id):
 		push_warning("ItemRegistry: Item ID %d is already registered:\n\n%s\n\nRe-registering will overwrite previous data." % [p_item_id, str(prettify(p_item_id))])
@@ -85,6 +87,10 @@ func add_item(p_item_id: int, p_name: String = "", p_description: String = "", p
 		item_registry_entry_dictionary[_item_entry_key.STACK_COUNT_LIMIT] = p_stack_count
 	if not p_metadata.is_empty():
 		item_registry_entry_dictionary[_item_entry_key.METADATA] = p_metadata
+	if p_instance_data != null:
+		item_registry_entry_dictionary[_item_entry_key.INSTANCE_DATA] = p_instance_data
+	if p_instance_data_comparator.is_valid():
+		item_registry_entry_dictionary[_item_entry_key.INSTANCE_DATA_COMPARATOR] = p_instance_data_comparator
 	item_modified.emit(p_item_id)
 
 
@@ -178,7 +184,7 @@ func set_stack_capacity(p_item_id: int, p_stack_capacity: int) -> void:
 	if not _m_item_registry_entries_dictionary.has(p_item_id):
 		_m_item_registry_entries_dictionary[p_item_id] = item_registry_entry_dictionary
 	if p_stack_capacity <= 0:
-		push_warning("ItemRegistry: Attempted to set a stack capacity with a negative number which should be positive instead. Ignoring.")
+		push_warning("ItemRegistry: Attempted to set a stack capacity with a non-positive number (%d). Stack capacity must be a positive integer. Ignoring." % p_stack_capacity)
 		return
 	elif p_stack_capacity == DEFAULT_STACK_CAPACITY:
 		var _success: bool = item_registry_entry_dictionary.erase(_item_entry_key.STACK_CAPACITY)
@@ -223,14 +229,70 @@ func get_stack_count(p_item_id: int) -> int:
 ## Returns true if the item has a stack count set different than 0, the default value..
 func has_stack_count(p_item_id: int) -> bool:
 	var item_registry_entry_dictionary: Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, { })
-	if not _m_item_registry_entries_dictionary.has(p_item_id):
-		_m_item_registry_entries_dictionary[p_item_id] = item_registry_entry_dictionary
 	return item_registry_entry_dictionary.has(_item_entry_key.STACK_COUNT_LIMIT)
 
 
 ## Returns true if the stack count for the item is set to greater than 0. Returns false otherwise.
 func is_stack_count_limited(p_item_id: int) -> bool:
 	return get_stack_count(p_item_id) > 0
+
+
+## Sets the default instance data for an item
+func set_instance_data(p_item_id: int, p_instance_data: Variant) -> void:
+	var item_registry_entry_dictionary: Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, { })
+	if not _m_item_registry_entries_dictionary.has(p_item_id):
+		_m_item_registry_entries_dictionary[p_item_id] = item_registry_entry_dictionary
+	if p_instance_data == null:
+		var _success: bool = item_registry_entry_dictionary.erase(_item_entry_key.INSTANCE_DATA)
+	else:
+		item_registry_entry_dictionary[_item_entry_key.INSTANCE_DATA] = p_instance_data
+	item_modified.emit(p_item_id)
+
+
+## Returns the default instance data for an item
+func get_instance_data(p_item_id: int) -> Variant:
+	var item_registry_entry_dictionary: Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, { })
+	var instance_data: Variant = item_registry_entry_dictionary.get(_item_entry_key.INSTANCE_DATA, null)
+	return instance_data
+
+
+## Returns true when the item id has a default instance data.
+func has_instance_data(p_item_id: int) -> bool:
+	var item_registry_entry_dictionary: Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, { })
+	return item_registry_entry_dictionary.has(_item_entry_key.INSTANCE_DATA)
+
+
+## Sets the default instance data for an item
+func set_instance_data_comparator(p_item_id: int, p_instance_data_comparator: Callable) -> void:
+	if not p_instance_data_comparator.is_valid():
+		push_warning("ItemRegistry: Attempted to add invalid instance data comparator to item with id %d. Ignoring." % p_item_id)
+		return
+	var expected_arg_count: int = 2
+	var arg_count: int = p_instance_data_comparator.get_argument_count()
+	if arg_count != expected_arg_count:
+		push_warning("ItemRegistry: Instance data comparator for item id %d must accept exactly %d arguments (first_instance_data, second_instance_data), but it accepts %d. Ignoring." % [p_item_id, expected_arg_count, arg_count])
+		return
+	var item_registry_entry_dictionary: Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, { })
+	if not _m_item_registry_entries_dictionary.has(p_item_id):
+		_m_item_registry_entries_dictionary[p_item_id] = item_registry_entry_dictionary
+	if p_instance_data_comparator == __default_instance_data_comparator:
+		var _success: bool = item_registry_entry_dictionary.erase(_item_entry_key.INSTANCE_DATA_COMPARATOR)
+	else:
+		item_registry_entry_dictionary[_item_entry_key.INSTANCE_DATA_COMPARATOR] = p_instance_data_comparator
+	item_modified.emit(p_item_id)
+
+
+## Returns the default instance data for an item
+func get_instance_data_comparator(p_item_id: int) -> Callable:
+	var item_registry_entry_dictionary: Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, { })
+	var instance_data_comparator: Callable = item_registry_entry_dictionary.get(_item_entry_key.INSTANCE_DATA_COMPARATOR, __default_instance_data_comparator)
+	return instance_data_comparator
+
+
+## Returns true when the item id has an instance data comparator other than the default one.
+func has_instance_data_comparator(p_item_id: int) -> bool:
+	var item_registry_entry_dictionary: Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, { })
+	return item_registry_entry_dictionary.has(_item_entry_key.INSTANCE_DATA_COMPARATOR)
 
 
 ## Returns an array with the registered items.
@@ -275,9 +337,9 @@ func get_item_metadata(p_item_id: int, p_key: Variant, p_default_value: Variant 
 func get_item_metadata_data(p_item_id: int) -> Dictionary:
 	var item_registry_entry_dictionary: Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, { })
 	var item_metadata: Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, { })
-	if not _m_item_registry_dictionary.has(_item_entry_key.METADATA):
+	if not item_registry_entry_dictionary.has(_item_entry_key.METADATA):
 		# There's a chance the user wants to modify it externally and have it update the ItemRegistry automatically -- make sure we store a reference of that metadata:
-		_m_item_registry_dictionary[_item_entry_key.METADATA] = item_metadata
+		item_registry_entry_dictionary[_item_entry_key.METADATA] = item_metadata
 	return item_metadata
 
 
@@ -340,7 +402,9 @@ func append(p_item_registry: ItemRegistry) -> void:
 		var stack_capacity: int = item_registry_entry_dictionary.get(_item_entry_key.STACK_CAPACITY, DEFAULT_STACK_CAPACITY)
 		var stack_count: int = item_registry_entry_dictionary.get(_item_entry_key.STACK_COUNT_LIMIT, DEFAULT_STACK_COUNT_LIMIT)
 		var metadata: Dictionary = item_registry_entry_dictionary.get(_item_entry_key.METADATA, { })
-		add_item(item_id, name, description, icon, stack_capacity, stack_count, metadata)
+		var instance_data: Variant = item_registry_entry_dictionary.get(_item_entry_key.INSTANCE_DATA, null)
+		var instance_data_comparator: Callable = item_registry_entry_dictionary.get(_item_entry_key.INSTANCE_DATA_COMPARATOR, Callable())
+		add_item(item_id, name, description, icon, stack_capacity, stack_count, metadata, instance_data, instance_data_comparator)
 
 
 ## Returns a reference to the internal dictionary where all the item registry data is stored.[br]
@@ -353,18 +417,20 @@ func get_data() -> Dictionary:
 ## Overwrites the item registry data.
 func set_data(p_data: Dictionary) -> void:
 	# Track old item IDs:
-	var item_ids_changed: Dictionary = _m_item_registry_entries_dictionary
+	var item_ids_modified: Dictionary = { } # Note: here we are using the Dictionary as a "set" (a collection data type not currently available in GDScript)
+	for item_id: int in _m_item_registry_entries_dictionary:
+		item_ids_modified[item_id] = true
 
-	# Update data
+	# Inject the new data:
 	_m_item_registry_dictionary = p_data
 	_m_item_registry_entries_dictionary = _m_item_registry_dictionary[_registry_key.ITEM_ENTRIES]
 
 	# Track new item IDs:
 	for item_id: int in _m_item_registry_entries_dictionary:
-		item_ids_changed[item_id] = true
+		item_ids_modified[item_id] = true
 
-	# Send a signal about all the ids that changed:
-	for item_id: int in item_ids_changed:
+	# Send signals to notify all the the item ids that changed:
+	for item_id: int in item_ids_modified:
 		item_modified.emit(item_id)
 
 	if EngineDebugger.is_active():
@@ -372,14 +438,15 @@ func set_data(p_data: Dictionary) -> void:
 
 		# Process each entry data
 		var duplicated_registry_data: Dictionary = _m_item_registry_dictionary.duplicate(true)
-		for item_id: int in duplicated_registry_data:
-			# The debugger viewer requires certain objects to be stringified before sending -- duplicate the entry data to avoid overriding the runtime data:
-			var duplicated_item_registry_entry_dictionary: Dictionary = _m_item_registry_entries_dictionary[item_id]
-			duplicated_item_registry_entry_dictionary = duplicated_item_registry_entry_dictionary.duplicate(true)
+		var duplicated_registry_entries: Dictionary = duplicated_registry_data.get(_registry_key.ITEM_ENTRIES, {})
+		for item_id: int in duplicated_registry_entries:
+			# The debugger viewer requires certain objects to be stringified before sending -- the deep copy already duplicated the entry data so we can modify in place:
+			var duplicated_item_registry_entry_dictionary: Dictionary = duplicated_registry_entries[item_id]
 
 			# Convert the image into an object that we can send into the debugger
 			if duplicated_item_registry_entry_dictionary.has(_item_entry_key.ICON):
-				var image: Image = duplicated_item_registry_entry_dictionary[_item_entry_key.ICON]
+				var texture: Texture2D = duplicated_item_registry_entry_dictionary[_item_entry_key.ICON]
+				var image: Image = texture.get_image()
 				duplicated_item_registry_entry_dictionary[_item_entry_key.ICON] = var_to_bytes_with_objects(image)
 
 		# Process the ItemRegistry metadata:
@@ -433,6 +500,19 @@ func __synchronize_item_data_with_the_debugger(p_item_id: int) -> void:
 			var image: Image = texture.get_image()
 			duplicated_item_registry_entry_dictionary[_item_entry_key.ICON] = var_to_bytes_with_objects(image)
 
+		# Stringify instance data to send it into the debugger:
+		if duplicated_item_registry_entry_dictionary.has(_item_entry_key.INSTANCE_DATA):
+			var instance_data: Variant = duplicated_item_registry_entry_dictionary[_item_entry_key.INSTANCE_DATA]
+			if instance_data is Callable or instance_data is Object:
+				duplicated_item_registry_entry_dictionary[_item_entry_key.INSTANCE_DATA] = str(instance_data)
+
+		# Stringify instance data to send it into the debugger:
+		if duplicated_item_registry_entry_dictionary.has(_item_entry_key.INSTANCE_DATA_COMPARATOR):
+			var instance_data_comparator: Callable = duplicated_item_registry_entry_dictionary[_item_entry_key.INSTANCE_DATA_COMPARATOR]
+			duplicated_item_registry_entry_dictionary[_item_entry_key.INSTANCE_DATA_COMPARATOR] = str(instance_data_comparator)
+		else:
+			duplicated_item_registry_entry_dictionary[_item_entry_key.INSTANCE_DATA_COMPARATOR] = str(__default_instance_data_comparator)
+
 		var item_registry_manager_id: int = get_instance_id()
 		EngineDebugger.send_message("inventory_manager:item_registry_sync_item_registry_entry", [item_registry_manager_id, p_item_id, duplicated_item_registry_entry_dictionary])
 
@@ -465,6 +545,15 @@ func __sync_registry_metadata_with_debugger() -> void:
 
 		# Send the stringified metadata
 		EngineDebugger.send_message("inventory_manager:item_registry_sync_metadata", [get_instance_id(), stringified_metadata])
+
+
+# Default comparator item instance data comparator used for adding custom items to the same slot if needed
+static func __default_instance_data_comparator(p_first_instance_data : Variant, p_second_instance_data : Variant) -> bool:
+	if typeof(p_first_instance_data) == typeof(p_second_instance_data):
+		return p_first_instance_data == p_second_instance_data
+	else:
+		# Types differ. The instance data is different
+		return false
 
 
 func _init() -> void:

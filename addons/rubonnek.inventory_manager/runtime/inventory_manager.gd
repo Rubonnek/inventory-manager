@@ -37,13 +37,23 @@ class_name InventoryManager
 # * Item slots do not hold any data other than the item ID and their amount. Item name, description, price, etc, are optional.
 # * Whenever possible, avoid explicit use of range() to avoid creating an array with all the indices we need to loop over. Avoiding the array creation is way faster for inventories of infinite size. For this reason, under some specific circumstances two loops with the same operations but slightly modified indexes are used.
 # * Before extracting data from the item slots array, the indices must be validated and allocated in memory.
+# * Instance data is handled this way: whenever there's a getter on the public interface, we search the inventory first for instance data and then the registry for instance data if any. Whenever we are consuming the instance data, the instance data must be normalized (i.e. checked against the item registry and nullified if the instance data is the same as what's installed in the registry).
 
-var _m_inventory_manager_dictionary: Dictionary
-var _m_item_slots_packed_array: PackedInt64Array
-var _m_item_stack_count_tracker: Dictionary
-var _m_item_total_tracker: Dictionary
-var _m_item_slots_tracker: Dictionary
-var _m_item_registry: ItemRegistry
+# Data types for release (compatible with 4.2+)
+var _m_inventory_manager_dictionary: Dictionary = {}
+var _m_item_slots_packed_array: PackedInt64Array = PackedInt64Array()
+var _m_item_stack_count_tracker: Dictionary = {}
+var _m_item_slots_tracker: Dictionary = {}
+var _m_item_slots_instance_data_tracker: Dictionary = {}
+var _m_item_registry: ItemRegistry = null
+
+# Data types for development or performance (compatible with 4.4+)
+# var _m_inventory_manager_dictionary: Dictionary = {}
+# var _m_item_slots_packed_array: PackedInt64Array = PackedInt64Array()
+# var _m_item_stack_count_tracker: Dictionary[int, int] = {}
+# var _m_item_slots_tracker: Dictionary[int, PackedInt64Array] = {}
+# var _m_item_slots_instance_data_tracker: Dictionary[int, Variant] = {}
+# var _m_item_registry: ItemRegistry = null
 
 ## Emitted when an item fills an empty slot.
 signal item_added(p_slot_index: int, p_item_id: int)
@@ -58,7 +68,8 @@ signal item_removed(p_slot_index: int, p_item_id: int)
 signal inventory_cleared()
 
 enum _key {
-	ITEM_ENTRIES,
+	ITEM_SLOTS,
+	INSTANCE_DATA_TRACKER,
 	SIZE,
 }
 
@@ -71,7 +82,7 @@ const _INT64_MAX: int = 2 ** 63 - 1
 ## When [code]p_start_slot_number[/code] is specified and it is possible to create more stacks for the specified item, the manager will attempt to add items at the specified slot or at any higher slot if needed, also looping around to the beginning of the inventory when necessary as well.[br][br]
 ## When [code]p_partial_add[/code] is true (default), if the amount exceeds what can be added to the inventory and there is still some capacity for the item, the remaining item amount not added to the inventory will be returned as an [ExcessItems].[br][br]
 ## When [code]p_partial_add[/code] is false, if the amount exceeds what can be added to the inventory, the item amount will not be added at all to the inventory and will be returned as an [ExcessItems].
-func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial_add: bool = true) -> ExcessItems:
+func add(p_item_id: int, p_amount: int, p_instance_data: Variant = null, p_start_slot_number: int = -1, p_partial_add: bool = true) -> ExcessItems:
 	if p_item_id < 0:
 		push_warning("InventoryManager: Attempted to add an item with invalid item ID (%d). Ignoring call. The item ID must be equal or greater than zero." % p_item_id)
 		return null
@@ -85,19 +96,29 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 		push_warning("InventoryManager: Attempted to add item ID (%d) with an invalid start index (%d). Forcing start index to -1." % [p_item_id, p_start_slot_number])
 		p_start_slot_number = -1
 
-	if not p_partial_add:
-		if p_amount > get_remaining_capacity_for_item(p_item_id):
-			return __create_excess_items(p_item_id, p_amount)
+	# Make sure to always fallback instance data to whatever is on the registry:
+	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
 
+	if not p_partial_add:
+		if p_amount > get_remaining_capacity_for_item(p_item_id, normalized_instance_data):
+			return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
+
+	# Grab item id data
 	var registered_stack_count: int = _m_item_registry.get_stack_count(p_item_id)
-	var is_stack_count_limited: bool = _m_item_registry.is_stack_count_limited(p_item_id)
 	var current_stack_count: int = _m_item_stack_count_tracker.get(p_item_id, 0)
+	var is_stack_count_limited: bool = _m_item_registry.is_stack_count_limited(p_item_id)
+
+	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
+
 	if p_start_slot_number < 0:
 		# Then a start index was not passed.
 		# First fill all the slots with available stack space while skipping empty slots
 		var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
 		for slot_number: int in item_id_slots_array:
-			p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount)
+			var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+			if not registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+				continue
+			p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount, normalized_instance_data)
 			if p_amount == 0:
 				return null
 
@@ -105,7 +126,7 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 		# Check if the stack count is limited -- let's make sure we don't go over the number of registered stack count.
 		if is_stack_count_limited and current_stack_count >= registered_stack_count:
 			# We've stumbled upon the maximum number of stacks and added items to all of them. No more items can be added.
-			return __create_excess_items(p_item_id, p_amount)
+			return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
 
 		if is_infinite():
 			# Add items to empty slots either until we hit the stack count limit or the amount of items remainind to add reaches 0.
@@ -117,7 +138,7 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 
 				if __is_slot_empty(slot_number):
 					# Add item:
-					p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount)
+					p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount, normalized_instance_data)
 					if p_amount == 0:
 						# We are done adding items. There's no excess.
 						return null
@@ -126,11 +147,11 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 					current_stack_count += 1
 					if is_stack_count_limited and current_stack_count >= registered_stack_count:
 						# We can't add any more of this item. Return the excess items.
-						return __create_excess_items(p_item_id, p_amount)
+						return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
 				slot_number += 1
 				if slot_number < 0:
 					push_warning("InventoryManager: Detected integer overflow in add(). Exiting loop.")
-					return __create_excess_items(p_item_id, p_amount)
+					return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
 		else: # Inventory size is limited.
 			# Add items to empty slots either until we hit the stack count limit or the amount of items remaining to add reaches 0.
 			for slot_number: int in inventory_size:
@@ -140,7 +161,7 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 
 				if __is_slot_empty(slot_number):
 					# Add item:
-					p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount)
+					p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount, normalized_instance_data)
 
 					if p_amount == 0:
 						# We are done adding items. There's no excess.
@@ -150,8 +171,8 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 					current_stack_count += 1
 					if is_stack_count_limited and current_stack_count >= registered_stack_count:
 						# Couldn't add all the items to the inventory. Return the excess items.
-						return __create_excess_items(p_item_id, p_amount)
-			return __create_excess_items(p_item_id, p_amount)
+						return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
+			return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
 	else:
 		# If the current stack capacity is greater or equal to the registered size, no more stacks can be added.
 		if is_stack_count_limited and current_stack_count >= registered_stack_count:
@@ -159,11 +180,14 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 			# Let's do so:
 			var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
 			for slot_number: int in item_id_slots_array:
-				p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount)
+				var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+				if not registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+					continue
+				p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount, normalized_instance_data)
 				if p_amount == 0:
 					return null
 			# Couldn't add all the items to the inventory. Return the excess items.
-			return __create_excess_items(p_item_id, p_amount)
+			return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
 
 		# We can add more stacks to the inventory. Let's do so.
 		if is_infinite():
@@ -174,11 +198,13 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 					__increase_size(slot_number)
 
 				if __is_slot_empty(slot_number) and (not is_stack_count_limited or current_stack_count < registered_stack_count):
-					p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount)
+					p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount, normalized_instance_data)
 					current_stack_count += 1
 				elif __get_slot_item_id(slot_number) == p_item_id:
-					# NOTE: We don't count this stack since it already has been accounted for
-					p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount)
+					var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+					if registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+						# NOTE: We don't count this stack since it already has been accounted for
+						p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount, normalized_instance_data)
 				if p_amount == 0:
 					# There's nothing else to add.
 					return null
@@ -193,11 +219,14 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 			# It may be possible to add some more items. Go over all the current stacks and attempt to add more items:
 			var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
 			for slot_number_loop_around: int in item_id_slots_array:
-				p_amount = __add_items_to_slot(slot_number_loop_around, p_item_id, p_amount)
+				var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number_loop_around, null)
+				if not registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+					continue
+				p_amount = __add_items_to_slot(slot_number_loop_around, p_item_id, p_amount, normalized_instance_data)
 				if p_amount == 0:
 					return null
 			# Couldn't add all the items to the inventory. Return the excess items.
-			return __create_excess_items(p_item_id, p_amount)
+			return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
 		else: # the inventory size is limited, but it's possible we can add more stacks
 			for slot_number: int in inventory_size - p_start_slot_number:
 				if is_stack_count_limited and current_stack_count >= registered_stack_count:
@@ -207,11 +236,13 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 				if not __is_slot_allocated(slot_number + p_start_slot_number):
 					__increase_size(slot_number + p_start_slot_number)
 				if __is_slot_empty(slot_number + p_start_slot_number) and (not is_stack_count_limited or current_stack_count < registered_stack_count):
-					p_amount = __add_items_to_slot(slot_number + p_start_slot_number, p_item_id, p_amount)
+					p_amount = __add_items_to_slot(slot_number + p_start_slot_number, p_item_id, p_amount, normalized_instance_data)
 					current_stack_count += 1
 				elif __get_slot_item_id(slot_number + p_start_slot_number) == p_item_id:
-					# NOTE: We don't count this stack since it already has been accounted for
-					p_amount = __add_items_to_slot(slot_number + p_start_slot_number, p_item_id, p_amount)
+					var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number + p_start_slot_number, null)
+					if registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+						# NOTE: We don't count this stack since it already has been accounted for
+						p_amount = __add_items_to_slot(slot_number + p_start_slot_number, p_item_id, p_amount, normalized_instance_data)
 				if p_amount == 0:
 					# There's nothing else to add.
 					return null
@@ -223,37 +254,44 @@ func add(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial
 				for slot_number: int in p_start_slot_number:
 					if __is_slot_empty(slot_number) and (not is_stack_count_limited or current_stack_count < registered_stack_count):
 						current_stack_count += 1
-						p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount)
+						p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount, normalized_instance_data)
 					elif __get_slot_item_id(slot_number) == p_item_id:
-						p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount)
+						var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+						if registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+							p_amount = __add_items_to_slot(slot_number, p_item_id, p_amount, normalized_instance_data)
 					if p_amount == 0:
 						# There's nothing else to add.
 						return null
 				# We've looped through the remaining slots and not all items could be added. Return the excess items.
-				return __create_excess_items(p_item_id, p_amount)
+				return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
 	# Could not add some items to the inventory. Return those.
-	return __create_excess_items(p_item_id, p_amount)
+	return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
 
 
 ## Removes the specified item amount to the inventory.[br]
 ## When [code]p_start_slot_number[/code] is specified,  the manager will attempt to remove items from the specified slot or at any higher slot if needed, also looping around to the beginning of the inventory when necessary as well.[br][br]
-## When [code]p_partial_add[/code] is true (default), if the amount exceeds what can be removed from the inventory and there are still some items in the inventory, the remaining item amount within the inventory will be removed and the non-removed items will be returned as an [ExcessItems].[br][br]
-## When [code]p_partial_add[/code] is false, if the amount exceeds what can be removed from the inventory, the item amount will not be removed at all from the inventory and instead will be returned as an [ExcessItems].
-func remove(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_partial_removal: bool = true) -> ExcessItems:
+## When [code]p_partial_removal[/code] is true (default), if the amount exceeds what can be removed from the inventory and there are still some items in the inventory, the remaining item amount within the inventory will be removed and the non-removed items will be returned as an [ExcessItems].[br][br]
+## When [code]p_partial_removal[/code] is false, if the amount exceeds what can be removed from the inventory, the item amount will not be removed at all from the inventory and instead will be returned as an [ExcessItems].
+func remove(p_item_id: int, p_amount: int, p_instance_data: Variant = null, p_start_slot_number: int = -1, p_partial_removal: bool = true) -> ExcessItems:
 	if not _m_item_registry.has_item(p_item_id):
-		push_warning("InventoryManager: Adding unregistered item with id (%d) to the inventory. The default stack capacity and max stacks values will be used. Register item ID within the item registry before adding item to the inventory to silence this message." % p_item_id)
+		push_warning("InventoryManager: Removing unregistered item with id (%d) from the inventory. The default stack capacity and max stacks values will be used. Register item ID within the item registry before removing item from the inventory to silence this message." % p_item_id)
 	if p_amount == 0:
 		return null
 	if p_amount < 0:
 		push_warning("InventoryManager: Attempted to remove item ID (%d) with a negative amount (%d). Ignoring call." % [p_item_id, p_amount])
 		return null
 	if p_start_slot_number != -1 and not is_slot_valid(p_start_slot_number):
-		push_warning("InventoryManager: Attempted to add item ID (%d) with an invalid start index (%d). Forcing start index to -1." % [p_item_id, p_start_slot_number])
+		push_warning("InventoryManager: Attempted to remove item ID (%d) with an invalid start index (%d). Item removal will happen from the start of the inventory." % [p_item_id, p_start_slot_number])
 		p_start_slot_number = -1
 
+	# Make sure to always fallback instance data to whatever is on the registry:
+	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
+
 	if not p_partial_removal:
-		if p_amount > get_remaining_capacity_for_item(p_item_id):
-			return __create_excess_items(p_item_id, p_amount)
+		if p_amount > get_item_total(p_item_id, normalized_instance_data):
+			return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
+
+	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
 
 	if p_start_slot_number < 0:
 		# A start index was not given. We can start removing items from all the slots.
@@ -262,49 +300,54 @@ func remove(p_item_id: int, p_amount: int, p_start_slot_number: int = -1, p_part
 				# Nothing to remove here
 				continue
 			if __get_slot_item_id(slot_number) == p_item_id:
-				p_amount = __remove_items_from_slot(slot_number, p_item_id, p_amount)
+				var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+				if not registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+					continue
+				p_amount = __remove_items_from_slot(slot_number, p_item_id, p_amount, normalized_instance_data)
 				if p_amount == 0:
 					# We are done removing items. There's nothing more to remove.
 					return null
-		return __create_excess_items(p_item_id, p_amount)
+		return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
 	else:
-		# A start index was given. We can start removing items from all the slots, starting from there.
-		for slot_number: int in __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size()):
+		# A start index was given. We can start removing items from the slots, starting from there.
+		var total_slots: int = __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size())
+		for offseted_slot_number: int in total_slots - p_start_slot_number:
+			var slot_number: int = offseted_slot_number + p_start_slot_number
 			if __is_slot_empty(slot_number):
 				# Nothing to remove here
 				continue
 			if __get_slot_item_id(slot_number) == p_item_id:
-				p_amount = __remove_items_from_slot(slot_number, p_item_id, p_amount)
+				var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+				if not registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+					continue
+				p_amount = __remove_items_from_slot(slot_number, p_item_id, p_amount, normalized_instance_data)
 			if p_amount == 0:
 				# There's nothing else to remove.
 				return null
 		if p_start_slot_number != 0:
-			# Loop around the remaining slots. See implementation note above.
-			for slot_number_loop_around: int in __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size()) - p_start_slot_number:
+			# Loop around the remaining slots -- cap at the number of allocated slots to avoid out-of-bounds access. The start slot number may be valid but the slot may not be allocated.
+			for slot_number_loop_around: int in mini(p_start_slot_number, total_slots):
 				if __is_slot_empty(slot_number_loop_around):
 					# Nothing to remove here
 					continue
 				if __get_slot_item_id(slot_number_loop_around) == p_item_id:
-					p_amount = __remove_items_from_slot(slot_number_loop_around, p_item_id, p_amount)
+					var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number_loop_around, null)
+					if not registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+						continue
+					p_amount = __remove_items_from_slot(slot_number_loop_around, p_item_id, p_amount, normalized_instance_data)
 				if p_amount == 0:
 					# There's nothing else to remove.
 					return null
-		return __create_excess_items(p_item_id, p_amount)
+		return __create_excess_items(p_item_id, p_amount, normalized_instance_data)
 
 
 ## Adds items to the specified slot number. Returns the number of items not added to the slot.
-func add_items_to_slot(p_slot_index: int, p_item_id: int, p_amount: int) -> int:
+func add_items_to_slot(p_slot_index: int, p_item_id: int, p_amount: int, p_instance_data: Variant = null) -> int:
 	if not is_slot_valid(p_slot_index):
 		push_warning("InventoryManager: Attempted to add an item to invalid slot '%d'. Ignoring call." % [p_slot_index])
 		return p_amount
 	if not __is_slot_allocated(p_slot_index):
 		__increase_size(p_slot_index)
-	var was_slot_empty: int = __is_slot_empty(p_slot_index)
-	if not was_slot_empty:
-		var slot_item_id: int = __get_slot_item_id(p_slot_index)
-		if p_item_id != slot_item_id:
-			push_warning("InventoryManager: attempted to add an item to slot '%d' with ID '%d'. Expected ID '%d'. Ignoring call." % [p_slot_index, p_item_id, slot_item_id])
-			return p_amount
 	if p_amount < 0:
 		push_warning("InventoryManager: add amount must be positive. Ignoring.")
 		return p_amount
@@ -312,20 +355,31 @@ func add_items_to_slot(p_slot_index: int, p_item_id: int, p_amount: int) -> int:
 		# There's nothing to do.
 		return p_amount
 
+	# Make sure to always fallback instance data to whatever is on the registry:
+	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
+
+	var was_slot_empty: int = __is_slot_empty(p_slot_index)
+	if not was_slot_empty:
+		var slot_item_id: int = __get_slot_item_id(p_slot_index)
+		if p_item_id != slot_item_id:
+			push_warning("InventoryManager: attempted to add an item to slot '%d' with ID '%d'. Expected ID '%d'. Ignoring call." % [p_slot_index, p_item_id, slot_item_id])
+			return p_amount
+
+		# Compare instance data -- we can't add the item to the slot if the slot is not empty and the normalized instance data differs.
+		var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(p_slot_index, null)
+		var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
+		if not registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+			push_warning("InventoryManager: Attempted to add an item to slot '%d' with different instance data than what is already in the slot. Ignoring call." % p_slot_index)
+			return p_amount
+
 	# Processed the item addition to the slot
-	return __add_items_to_slot(p_slot_index, p_item_id, p_amount)
+	return __add_items_to_slot(p_slot_index, p_item_id, p_amount, normalized_instance_data)
 
 
 ## Removes items from the specified slot number. Returns the number of items not removed from the slot.
-func remove_items_from_slot(p_slot_index: int, p_item_id: int, p_amount: int) -> int:
-	if not is_slot_valid(p_slot_index):
-		push_warning("InventoryManager: attempted to remove items on an invalid slot number '%d'. Ignoring." % p_slot_index)
-		return p_amount
-	if __is_slot_empty(p_slot_index):
-		push_warning("InventoryManager: attempted to remove an amount an empty item slot '%d'. Ignoring." % p_slot_index)
-		return p_amount
+func remove_items_from_slot(p_slot_index: int, p_item_id: int, p_amount: int, p_instance_data: Variant = null) -> int:
 	if p_item_id < 0:
-		push_warning("InventoryManager: attempted to remove an amount an invanlid item ID '%d'. Ignoring." % p_item_id)
+		push_warning("InventoryManager: attempted to remove an invalid item ID '%d'. Ignoring." % p_item_id)
 		return p_amount
 	if p_amount < 0:
 		push_warning("InventoryManager: remove amount must be positive. Ignoring.")
@@ -333,11 +387,27 @@ func remove_items_from_slot(p_slot_index: int, p_item_id: int, p_amount: int) ->
 	elif p_amount == 0:
 		# There's nothing to do.
 		return p_amount
+	if not is_slot_valid(p_slot_index):
+		push_warning("InventoryManager: attempted to remove items on an invalid slot number '%d'. Ignoring." % p_slot_index)
+		return p_amount
+	if not __is_slot_allocated(p_slot_index) or __is_slot_empty(p_slot_index):
+		# Slot is valid yet not allocated or empty. There's nothing to remove in either case.
+		return p_amount
 	var item_id: int = __get_slot_item_id(p_slot_index)
 	if item_id != p_item_id:
-		push_warning("InventoryManager: attempted to remove an item with ID '%d'. Expected '%d'. Ignoring call." % [p_item_id, item_id])
+		push_warning("InventoryManager: attempted to remove an item with ID '%d' from slot '%d' which has a different associated item id '%d'. Ignoring call." % [p_item_id, p_slot_index, item_id])
 		return p_amount
-	return __remove_items_from_slot(p_slot_index, p_item_id, p_amount)
+
+	# Make sure to always fallback instance data to whatever is on the registry:
+	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
+
+	# Compare instance data -- we can't remove the item from the slot if the slot's instance data differs.
+	var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(p_slot_index, null)
+	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
+	if not registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+		push_warning("InventoryManager: Attempted to remove an item from slot '%d' with different instance data than what is in the slot. Ignoring call." % p_slot_index)
+		return p_amount
+	return __remove_items_from_slot(p_slot_index, p_item_id, p_amount, normalized_instance_data)
 
 
 ## Swaps the items from the specified slots.
@@ -375,6 +445,12 @@ func swap(p_first_slot_number: int, p_second_slot_number: int) -> void:
 		__remove_item_id_slot_from_tracker(first_slot_item_id, p_first_slot_number)
 		__add_item_id_slot_to_tracker(first_slot_item_id, p_second_slot_number)
 
+		# Update item instance data tracker
+		var first_slot_item_instance: Variant = _m_item_slots_instance_data_tracker.get(p_first_slot_number, null)
+		if first_slot_item_instance != null:
+			_m_item_slots_instance_data_tracker[p_second_slot_number] = first_slot_item_instance
+			var _success: bool = _m_item_slots_instance_data_tracker.erase(p_first_slot_number)
+
 		# Clear
 		var first_slot_item_amount_index: int = __calculate_slot_item_amount_index(p_first_slot_number)
 		_m_item_slots_packed_array[first_slot_item_amount_index] = 0
@@ -394,6 +470,12 @@ func swap(p_first_slot_number: int, p_second_slot_number: int) -> void:
 		# Update item id slot tracker
 		__remove_item_id_slot_from_tracker(second_slot_item_id, p_second_slot_number)
 		__add_item_id_slot_to_tracker(second_slot_item_id, p_first_slot_number)
+
+		# Update item instance data tracker
+		var second_slot_item_instance: Variant = _m_item_slots_instance_data_tracker.get(p_second_slot_number, null)
+		if second_slot_item_instance != null:
+			_m_item_slots_instance_data_tracker[p_first_slot_number] = second_slot_item_instance
+			var _success: bool = _m_item_slots_instance_data_tracker.erase(p_second_slot_number)
 
 		# Clear
 		var second_slot_item_amount_index: int = __calculate_slot_item_amount_index(p_second_slot_number)
@@ -423,6 +505,18 @@ func swap(p_first_slot_number: int, p_second_slot_number: int) -> void:
 		__remove_item_id_slot_from_tracker(second_slot_item_id, p_second_slot_number)
 		__add_item_id_slot_to_tracker(second_slot_item_id, p_first_slot_number)
 
+		# Update item instance data tracker
+		var first_slot_item_instance: Variant = _m_item_slots_instance_data_tracker.get(p_first_slot_number, null)
+		var second_slot_item_instance: Variant = _m_item_slots_instance_data_tracker.get(p_second_slot_number, null)
+		if first_slot_item_instance != null:
+			_m_item_slots_instance_data_tracker[p_second_slot_number] = first_slot_item_instance
+		else:
+			var _success: bool = _m_item_slots_instance_data_tracker.erase(p_second_slot_number)
+		if second_slot_item_instance != null:
+			_m_item_slots_instance_data_tracker[p_first_slot_number] = second_slot_item_instance
+		else:
+			var _success: bool = _m_item_slots_instance_data_tracker.erase(p_first_slot_number)
+
 	slot_modified.emit(p_first_slot_number)
 	slot_modified.emit(p_second_slot_number)
 
@@ -431,22 +525,26 @@ func swap(p_first_slot_number: int, p_second_slot_number: int) -> void:
 		if not has_meta(&"deregistered"):
 			EngineDebugger.send_message("inventory_manager:swap", [get_instance_id(), p_first_slot_number, p_second_slot_number])
 
+## Returns true when a transfer is possible. Returns false when otherwise.
+## NOTE: Assumes slot numbers are valid and the safety checks have passed already
+#func __can_transfer(p_first_slot_number: int, p_first_amount: int, p_second_slot_number: int) -> bool:
+#	return true
 
-## Transfers items from first specified slot to the second specified slot. Transfers are only possible if both slots have the same item ID or the second slot is empty.
+## Transfers items from first specified slot to the second specified slot. Transfers are only possible if both slots have the same item ID and the same instance data or the second slot is empty. Use [method can_transfer] to check this.
 func transfer(p_first_slot_number: int, p_first_amount: int, p_second_slot_number: int) -> ExcessItems:
 	if not is_slot_valid(p_first_slot_number):
 		push_warning("InventoryManager: Attempted to transfer an item from invalid slot '%d'. Ignoring call." % [p_first_slot_number])
-		return
+		return null
 	if not is_slot_valid(p_second_slot_number):
 		push_warning("InventoryManager: Attempted to transfer an item to invalid slot '%d'. Ignoring call." % [p_second_slot_number])
-		return
+		return null
 	if p_first_amount < 0:
 		push_warning("InventoryManager: Attempted to transfer an item from slot '%d' with invalid slot with negative amount '%d'. Ignoring call." % [p_first_slot_number, p_first_amount])
-		return
+		return null
 	if __is_slot_empty(p_first_slot_number):
 		# There's nothing to do
-		return
-	# Increase inventory size if needed
+		return null
+	# Increase inventory size if needed -- the operations below require this
 	var max_slot_number: int = maxi(p_first_slot_number, p_second_slot_number)
 	if not __is_slot_allocated(max_slot_number):
 		__increase_size(max_slot_number)
@@ -458,6 +556,17 @@ func transfer(p_first_slot_number: int, p_first_amount: int, p_second_slot_numbe
 	# Check if it's possible to transfer:
 	var is_second_slot_empty: bool = __is_slot_empty(p_second_slot_number)
 	if first_item_id == second_item_id or is_second_slot_empty:
+		# Grab the first item instance data. We'll need this.
+		var first_item_instance_data: Variant = _m_item_slots_instance_data_tracker.get(p_first_slot_number, null)
+
+		# If the second slot is not empty, we need to check if both instance datas are equal
+		if not is_second_slot_empty:
+			# We need to check if both slots instance data is equal because otherwise we can't make the transfer since the slots are not really compatible
+			var second_item_instance_data: Variant = _m_item_slots_instance_data_tracker.get(p_second_slot_number, null)
+			var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(first_item_id)
+			if not registered_instance_data_comparator.call(first_item_instance_data, second_item_instance_data):
+				return __create_excess_items(first_item_id, p_first_amount, first_item_instance_data)
+
 		# Then it's possible to transfer. Do a sanity check on the amounts.
 		var first_slot_item_amount: int = __get_slot_item_amount(p_first_slot_number)
 		var target_amount: int = clampi(p_first_amount, 0, first_slot_item_amount)
@@ -483,11 +592,11 @@ func transfer(p_first_slot_number: int, p_first_amount: int, p_second_slot_numbe
 			# We don't go over the stack count limit. Perform the transfer.
 
 			# Let's remove the items from the first slot.
-			var remainder: int = __remove_items_from_slot(p_first_slot_number, first_item_id, target_amount)
+			var remainder: int = __remove_items_from_slot(p_first_slot_number, first_item_id, target_amount, first_item_instance_data)
 			assert(remainder == 0, "InventoryManager: removal from partial transfer yielded a non zero remainder. This should not happen at all.")
 
 			# Add items to the second slot
-			remainder = __add_items_to_slot(p_second_slot_number, first_item_id, target_amount)
+			remainder = __add_items_to_slot(p_second_slot_number, first_item_id, target_amount, first_item_instance_data)
 
 			# Is there a remainder?
 			if remainder != 0:
@@ -496,10 +605,10 @@ func transfer(p_first_slot_number: int, p_first_amount: int, p_second_slot_numbe
 				# We've already checked that we don't go over the stack count limit.
 
 				# Add the items to the first slot.
-				remainder = __add_items_to_slot(p_first_slot_number, first_item_id, remainder)
+				remainder = __add_items_to_slot(p_first_slot_number, first_item_id, remainder, first_item_instance_data)
 				if remainder != 0:
 					push_warning("InventoryManager: Attempted partial item amount transfer on item id (%d) from slot '%d' to slot '%d' Resulted in excess items after completing the operation. The item amounts found in the inventory seem to be higher than allowed by the item registry. You may want to run organize() to fix this possible on the remaining slots." % [first_item_id, p_first_slot_number, p_second_slot_number])
-					return __create_excess_items(first_item_id, remainder)
+					return __create_excess_items(first_item_id, remainder, first_item_instance_data)
 
 			# The transfer operation completed successfully
 			return null
@@ -507,11 +616,11 @@ func transfer(p_first_slot_number: int, p_first_amount: int, p_second_slot_numbe
 			# This is a total transfer attempt. No need to check if we are creating a new stack for now.
 
 			# Let's remove all the items from the first slot.
-			var remainder: int = __remove_items_from_slot(p_first_slot_number, first_item_id, target_amount)
+			var remainder: int = __remove_items_from_slot(p_first_slot_number, first_item_id, target_amount, first_item_instance_data)
 			assert(remainder == 0, "InventoryManager: removal from total transfer yielded a non zero remainder. This should not happen at all.")
 
 			# Add items to the second slot
-			remainder = __add_items_to_slot(p_second_slot_number, first_item_id, target_amount)
+			remainder = __add_items_to_slot(p_second_slot_number, first_item_id, target_amount, first_item_instance_data)
 
 			# Is there a remainder?
 			if remainder != 0:
@@ -523,13 +632,13 @@ func transfer(p_first_slot_number: int, p_first_amount: int, p_second_slot_numbe
 				var is_stack_count_limited: bool = _m_item_registry.is_stack_count_limited(first_item_id)
 				if is_stack_count_limited and current_stack_count + 1 > registered_stack_count:
 					push_warning("InventoryManager: Attempted partial item amount transfer on item id (%d) from slot '%d' to slot '%d' but this transfer violates the item's maximum stack count (%d). After the transfer the stack count would have been %d. Returning excess items." % [first_item_id, p_first_slot_number, p_second_slot_number, registered_stack_count, current_stack_count + 1])
-					return __create_excess_items(first_item_id, remainder)
+					return __create_excess_items(first_item_id, remainder, first_item_instance_data)
 
 				# We don't go over the stack count limit. Add the items to the slot.
-				remainder = __add_items_to_slot(p_first_slot_number, first_item_id, remainder)
+				remainder = __add_items_to_slot(p_first_slot_number, first_item_id, remainder, first_item_instance_data)
 				if remainder != 0:
 					push_warning("InventoryManager: Attempted partial item amount transfer on item id (%d) from slot '%d' to slot '%d' Resulted in excess items after completing the operation. The item amounts found in the inventory seem to be higher than allowed by the item registry. You may want to run organize() to fix this possible on the remaining slots." % [first_item_id, p_first_slot_number, p_second_slot_number])
-					return __create_excess_items(first_item_id, remainder)
+					return __create_excess_items(first_item_id, remainder, first_item_instance_data)
 
 			# The transfer operation completed successfully
 			return null
@@ -559,12 +668,14 @@ func reserve(p_number_of_slots: int = -1) -> Error:
 	return OK
 
 
-## Returns the item ID for the given item slot. Returns -1 on invalid slots.
+## Returns the item ID for the given item slot. Returns -1 on invalid or empty slots.
 func get_slot_item_id(p_slot_index: int) -> int:
 	if not is_slot_valid(p_slot_index):
 		push_warning("InventoryManager: Invalid slot (%d) passed to get_slot_item_id()." % p_slot_index)
 		return -1
 	if not __is_slot_allocated(p_slot_index):
+		return -1
+	if __is_slot_empty(p_slot_index):
 		return -1
 	var item_id: int = __get_slot_item_id(p_slot_index)
 	return item_id
@@ -579,6 +690,48 @@ func get_slot_item_amount(p_slot_index: int) -> int:
 		return 0
 	var amount: int = __get_slot_item_amount(p_slot_index)
 	return amount
+
+
+## Returns the slot item instance data. Returns null if there's no associated instance data.
+## Note: there are two levels of item instance data. The instance data registered within the ItemRegistry and the slot-specific item instance data. If there is no slot specific instance data, this function returns the instance data registered at the item registry if there's any.
+func get_slot_item_instance_data(p_slot_index: int) -> Variant:
+	if not is_slot_valid(p_slot_index):
+		push_warning("InventoryManager: Invalid slot (%d) passed to get_slot_item_instance_data()." % p_slot_index)
+		return null
+	if not __is_slot_allocated(p_slot_index):
+		return null
+	if is_slot_empty(p_slot_index):
+		return null
+	var item_id: int = __get_slot_item_id(p_slot_index)
+	var item_instance_data: Variant = _m_item_slots_instance_data_tracker.get(p_slot_index, null)
+	if item_instance_data == null:
+		item_instance_data = _m_item_registry.get_instance_data(item_id)
+	return item_instance_data
+
+
+## Returns the item instance data comparator for the item id at the specified slot. Returns an invalid [Callable] when the slot is empty or invalid.
+func get_slot_item_instance_data_comparator(p_slot_index: int) -> Callable:
+	if not is_slot_valid(p_slot_index):
+		push_warning("InventoryManager: Invalid slot (%d) passed to get_slot_item_instance_data_comparator()." % p_slot_index)
+		return Callable()
+	if not __is_slot_allocated(p_slot_index):
+		return Callable()
+	if is_slot_empty(p_slot_index):
+		return Callable()
+	var item_id: int = __get_slot_item_id(p_slot_index)
+	var item_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(item_id)
+	return item_instance_data_comparator
+
+
+## Sets the slot item instance data
+func set_slot_item_instance_data(p_slot_index: int, p_item_instance_data: Variant) -> void:
+	if not is_slot_valid(p_slot_index):
+		push_warning("InventoryManager: Invalid slot (%d) passed to set_slot_item_instance_data()." % p_slot_index)
+		return
+	if is_slot_empty(p_slot_index):
+		push_warning("InventoryManager: Attempted to set item instance data on slot (%d) which is empty. Ignoring" % p_slot_index)
+		return
+	__set_slot_item_instance_data(p_slot_index, p_item_instance_data)
 
 
 ## Returns true when the item slot is is empty. Returns false otherwise. Checking if the slot is empty does not mean it is valid or reachable if the inventory is strictly sized.
@@ -602,33 +755,77 @@ func is_slot_valid(p_slot_index: int) -> bool:
 	return p_slot_index < inventory_size
 
 
-## Returns the remaining amount of items the specified slot can hold. Returns -1 on an invalid slot number.
-func get_remaining_slot_capacity(p_slot_index: int) -> int:
+## Returns the remaining amount of items the specified slot can hold. Returns -1 on an invalid slot or if the specified item id or instance data mismatches the one found in the slot. On empty slots returns the stack capacity as registered in the item registry.
+func get_remaining_slot_capacity(p_slot_index: int, p_item_id: int, p_instance_data: Variant = null) -> int:
 	if not is_slot_valid(p_slot_index):
 		return -1
-	var remaining_capacity: int = __get_remaining_slot_capacity(p_slot_index)
-	return remaining_capacity
+	if not __is_slot_allocated(p_slot_index) or __is_slot_empty(p_slot_index):
+		# The slot is not allocated, but empty:
+		return _m_item_registry.get_stack_capacity(p_item_id)
+	# The slot is allocated and not empty.
+	var item_id: int = __get_slot_item_id(p_slot_index)
+	if item_id != p_item_id:
+		push_warning("InventoryManager: Mismatching item id found when attempting to get remaining slot capacity at slot '%d'." % p_slot_index)
+		return -1
+	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
+	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
+	var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(p_slot_index, null)
+	if not registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+		push_warning("InventoryManager: Mismatching item instance data found when attempting to get remaining slot capacity at slot '%d'." % p_slot_index)
+		return -1
+	return __get_remaining_slot_capacity(p_slot_index, p_item_id)
 
 
 ## Returns true when the inventory is empty. Returns false otherwise.
 func is_empty() -> bool:
-	return _m_item_slots_packed_array.is_empty()
+	return _m_item_stack_count_tracker.is_empty()
 
 
-## Returns the total sum of the specified item across all stacks within the inventory.
-func get_item_total(p_item_id: int) -> int:
-	return _m_item_total_tracker.get(p_item_id, 0)
+## Returns the total sum of the specified item across all stacks within the inventory.[br]
+func get_item_total(p_item_id: int, p_instance_data: Variant = null) -> int:
+	var item_count: int = 0
+	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
+	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
+	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
+	for slot_number: int in item_id_slots_array:
+		var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+		if registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+			item_count += __get_slot_item_amount(slot_number)
+	return item_count
 
 
-## Returns true if the inventory holds at least the specified amount of the item in question.
-func has_item_amount(p_item_id: int, p_amount: int) -> bool:
-	var item_total: int = get_item_total(p_item_id)
-	return p_amount <= item_total
+## Returns true if the inventory holds at least the specified amount of the item in question.[br]
+## When [code]p_instance_data[/code] is null (default), the check is performed across all instance data variations.[br]
+## When [code]p_instance_data[/code] is not null, only the stacks with matching instance data are considered.
+func has_item_amount(p_item_id: int, p_amount: int, p_instance_data: Variant = null) -> bool:
+	var item_count: int = 0
+	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
+	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
+	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
+	for slot_number: int in item_id_slots_array:
+		var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+		if registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+			item_count += __get_slot_item_amount(slot_number)
+			if item_count >= p_amount:
+				return true
+	return item_count >= p_amount
 
 
-## Returns true when one item with the specified item ID is found within the inventory. Returns false otherwise.
-func has_item(p_item_id: int) -> bool:
-	return p_item_id in _m_item_slots_tracker
+## Returns true when one item with the specified item ID is found within the inventory. Returns false otherwise.[br]
+## When [code]p_instance_data[/code] is null (default), returns true if any stack of the item exists regardless of instance data.[br]
+## When [code]p_instance_data[/code] is not null, returns true only if a stack with matching instance data exists.
+func has_item(p_item_id: int, p_instance_data: Variant = null) -> bool:
+	if p_instance_data == null:
+		return p_item_id in _m_item_slots_tracker
+	# Non-null instance data was provided -- check for at least one matching slot
+	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
+	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
+	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
+	for slot_number: int in item_id_slots_array:
+		var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+		if registered_instance_data_comparator.call(normalized_instance_data, slot_instance_data):
+			return true
+	return false
 
 
 ## Changes the inventory size and returns an array of excess items after the specified slot number if any are found.[br][br]
@@ -644,17 +841,19 @@ func resize(p_new_slot_count: int) -> Array[ExcessItems]:
 		var available_slots: int = __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size())
 		if p_new_slot_count < available_slots:
 			for slot_number: int in available_slots - p_new_slot_count:
-				if __is_slot_empty(slot_number + p_new_slot_count):
+				var slot_to_process: int = slot_number + p_new_slot_count
+				if __is_slot_empty(slot_to_process):
 					continue
 
 				# The slot is not empty. This slot is now an excess items object:
-				var item_id: int = __get_slot_item_id(slot_number + p_new_slot_count)
-				var item_amount: int = __get_slot_item_amount(slot_number + p_new_slot_count)
-				var excess_items: ExcessItems = __create_excess_items(item_id, item_amount)
+				var item_id: int = __get_slot_item_id(slot_to_process)
+				var item_amount: int = __get_slot_item_amount(slot_to_process)
+				var item_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_to_process, null)
+				var excess_items: ExcessItems = __create_excess_items(item_id, item_amount, item_instance_data)
 				excess_items_array.push_back(excess_items)
 
 				# And remove those from the inventory to update the internal counters:
-				var _result_is_zero: int = __remove_items_from_slot(slot_number, item_id, item_amount)
+				var _result_is_zero: int = __remove_items_from_slot(slot_to_process, item_id, item_amount, item_instance_data)
 
 		# Resize the slots data:
 		var last_slot_index: int = p_new_slot_count - 1
@@ -675,26 +874,31 @@ func resize(p_new_slot_count: int) -> Array[ExcessItems]:
 
 # Adds items to the specified slot number. Returns the number of items not added to the slot.
 # NOTE: The slot number is assumed to be within bounds in this function.
-func __add_items_to_slot(p_slot_index: int, p_item_id: int, p_amount: int) -> int:
+# NOTE: Assumes the passed instance data is already normalized (i.e. p_instance_data is null if the fallback data is the same)
+func __add_items_to_slot(p_slot_index: int, p_item_id: int, p_amount: int, p_instance_data: Variant) -> int:
 	var was_slot_empty: int = __is_slot_empty(p_slot_index)
 	if was_slot_empty:
 		# The slot was empty. Inject the item id.
 		var item_id_index: int = __calculate_slot_item_id_index(p_slot_index)
 		_m_item_slots_packed_array[item_id_index] = p_item_id
-	var amount_to_add: int = clampi(p_amount, 0, __get_remaining_slot_capacity(p_slot_index))
+	var amount_to_add: int = clampi(p_amount, -1, __get_remaining_slot_capacity(p_slot_index, p_item_id))
+	if amount_to_add == -1:
+		return p_amount
 	var item_amount_index: int = __calculate_slot_item_amount_index(p_slot_index)
 	_m_item_slots_packed_array[item_amount_index] = __get_slot_item_amount(p_slot_index) + amount_to_add
-	__increase_item_total(p_item_id, amount_to_add) # used to quickly get the total amount of a specific in the inventory
 	if was_slot_empty:
 		__increase_stack_count(p_item_id)
 		__add_item_id_slot_to_tracker(p_item_id, p_slot_index)
+		if p_instance_data != null:
+			_m_item_slots_instance_data_tracker[p_slot_index] = p_instance_data
 		item_added.emit(p_slot_index, p_item_id)
 	slot_modified.emit(p_slot_index)
 	var remaining_amount_to_add: int = p_amount - amount_to_add
 	if EngineDebugger.is_active():
 		if not has_meta(&"deregistered"):
 			var item_manager_id: int = get_instance_id()
-			EngineDebugger.send_message("inventory_manager:add_items_to_slot", [item_manager_id, p_slot_index, p_item_id, p_amount])
+			var stringified_instance_data : String = str(p_instance_data)
+			EngineDebugger.send_message("inventory_manager:add_items_to_slot", [item_manager_id, p_slot_index, p_item_id, p_amount, stringified_instance_data])
 	return remaining_amount_to_add
 
 
@@ -708,22 +912,23 @@ func __set_size(p_new_size: int) -> void:
 
 # Removes items from the specified slot number. Returns the number of items not removed from the slot.
 # NOTE: The slot number is assumed to be within bounds in this function.
-func __remove_items_from_slot(p_slot_index: int, p_item_id: int, p_amount: int) -> int:
+func __remove_items_from_slot(p_slot_index: int, p_item_id: int, p_amount: int, p_instance_data: Variant) -> int:
 	var item_amount: int = __get_slot_item_amount(p_slot_index)
 	var amount_to_remove: int = clampi(p_amount, 0, item_amount)
 	var new_amount: int = item_amount - amount_to_remove
 	_m_item_slots_packed_array[__calculate_slot_item_amount_index(p_slot_index)] = new_amount
-	__decrease_item_total(p_item_id, amount_to_remove) # used to quickly get the total amount of a specific in the inventory
 	if new_amount == 0:
 		__decrease_stack_count(p_item_id)
 		__remove_item_id_slot_from_tracker(p_item_id, p_slot_index)
+		var _success: bool = _m_item_slots_instance_data_tracker.erase(p_slot_index)
 		item_removed.emit(p_slot_index, p_item_id)
 	slot_modified.emit(p_slot_index)
 	var remaining_amount_to_remove: int = p_amount - amount_to_remove
 	if EngineDebugger.is_active():
 		if not has_meta(&"deregistered"):
 			var item_manager_id: int = get_instance_id()
-			EngineDebugger.send_message("inventory_manager:remove_items_from_slot", [item_manager_id, p_slot_index, p_item_id, p_amount])
+			var stringified_instance_data : String = str(p_instance_data)
+			EngineDebugger.send_message("inventory_manager:remove_items_from_slot", [item_manager_id, p_slot_index, p_item_id, p_amount, stringified_instance_data])
 	return remaining_amount_to_remove
 
 
@@ -751,10 +956,27 @@ func __get_slot_item_amount(p_slot_index: int) -> int:
 	return amount
 
 
-# Returns the remaining amount of items this slot can hold.
+# Sets the slot item instance data
 # NOTE: The slot number is assumed to be within bounds in this function.
-func __get_remaining_slot_capacity(p_slot_index: int) -> int:
+func __set_slot_item_instance_data(p_slot_index: int, p_item_instance_data: Variant) -> void:
 	var item_id: int = __get_slot_item_id(p_slot_index)
+	var item_instance_data_comparator : Callable = _m_item_registry.get_instance_data_comparator(item_id)
+	var registered_item_instance_data: Variant = _m_item_registry.get_instance_data(item_id)
+	var are_instance_data_the_same: bool = item_instance_data_comparator.call(registered_item_instance_data, p_item_instance_data)
+	if are_instance_data_the_same:
+		var _success: bool = _m_item_slots_instance_data_tracker.erase(p_slot_index)
+		return
+	_m_item_slots_instance_data_tracker[p_slot_index] = p_item_instance_data
+
+
+# Returns the remaining amount of items this slot can hold. Returns -1 on mismatching item ids.
+# NOTE: The slot number is assumed to be within bounds in this function.
+# NOTE: The item instance data is assumed to be correct.
+func __get_remaining_slot_capacity(p_slot_index: int, p_item_id: int) -> int:
+	var item_id: int = __get_slot_item_id(p_slot_index)
+	if item_id != p_item_id:
+		# Mismatching ids. It's impossible to add items of the specified item ID to this slot.
+		return -1
 	var amount: int = __get_slot_item_amount(p_slot_index)
 	var stack_capacity: int = _m_item_registry.get_stack_capacity(item_id)
 	var remaining_capacity: int = clampi(stack_capacity - amount, 0, stack_capacity)
@@ -769,23 +991,8 @@ func __is_slot_empty(p_slot_index: int) -> bool:
 
 
 # Returns true if the slot has been allocated in memory. Returns false otherwise.
-# NOTE: The slot number is assumed to be within bounds in this function.
 func __is_slot_allocated(p_slot_index: int) -> bool:
 	return p_slot_index < __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size())
-
-
-# Returns the excess items when the current stack capacity is bigger than the registered stack capacity for the current item ID and modifies the item amount if needed. Returns null when there are no excess items to extract.
-# NOTE: The slot number is assumed to be within bounds in this function.
-func __extract_excess_items(p_slot_index: int) -> ExcessItems:
-	var item_id: int = __get_slot_item_id(p_slot_index)
-	var registry_stack_capacity: int = _m_item_registry.get_stack_capacity(item_id)
-	var item_amount: int = __get_slot_item_amount(p_slot_index)
-	if item_amount > registry_stack_capacity:
-		var excess_item_amount: int = item_amount - registry_stack_capacity
-		var excess_items: ExcessItems = __create_excess_items(item_id, excess_item_amount)
-		var _result_is_zero: int = __remove_items_from_slot(p_slot_index, item_id, excess_item_amount)
-		return excess_items
-	return null
 
 
 # Given a slot number, calculates the index for the item ID index of that slot.
@@ -902,20 +1109,22 @@ func get_data() -> Dictionary:
 
 ## Sets the inventory manager data.
 func set_data(p_data: Dictionary) -> void:
-	# Clear the inventory
+	# Clear the inventory.
 	clear()
 
-	# Inject the new data
+	# Inject the new data.
 	_m_inventory_manager_dictionary = p_data
-	_m_item_slots_packed_array = _m_inventory_manager_dictionary[_key.ITEM_ENTRIES]
 
-	# Send a signal about all the new slots that changed and also count the stacks:
+	# Update data references used all over the manager code.
+	_m_item_slots_packed_array = _m_inventory_manager_dictionary[_key.ITEM_SLOTS]
+	_m_item_slots_instance_data_tracker = _m_inventory_manager_dictionary[_key.INSTANCE_DATA_TRACKER]
+
+	# Send a signal about all the new slots that changed and also count the stacks.
 	for slot_number: int in __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size()):
 		if __is_slot_empty(slot_number):
 			continue
 		var item_id: int = __get_slot_item_id(slot_number)
 		__increase_stack_count(item_id)
-		__increase_item_total(item_id, __get_slot_item_amount(slot_number))
 		__add_item_id_slot_to_tracker(item_id, slot_number)
 		item_added.emit(slot_number, item_id)
 		slot_modified.emit(slot_number)
@@ -925,9 +1134,10 @@ func set_data(p_data: Dictionary) -> void:
 		var sanity_check_messages: PackedStringArray = sanity_check()
 		var joined_messages: String = "".join(sanity_check_messages)
 		if not joined_messages.is_empty():
-			push_warning("InventoryManager: Found the following issues in the inventory:\n%s", joined_messages)
+			push_warning("InventoryManager: Found the following issues in the inventory:\n%s" % joined_messages)
 
-	# Synchronize change with the debugger:
+
+	# Synchronize change with the debugger.
 	if EngineDebugger.is_active():
 		if not has_meta(&"deregistered"):
 			EngineDebugger.send_message("inventory_manager:set_data", [get_instance_id(), _m_inventory_manager_dictionary])
@@ -950,20 +1160,30 @@ func apply_registry_constraints() -> Array[ExcessItems]:
 		var registry_stack_count: int = _m_item_registry.get_stack_count(item_id)
 
 		# Extract the excess items from the stack if any:
-		var excess_items: ExcessItems = __extract_excess_items(slot_number)
+		var excess_items: ExcessItems = null
+		var registry_stack_capacity: int = _m_item_registry.get_stack_capacity(item_id)
+		var item_amount: int = __get_slot_item_amount(slot_number)
+		if item_amount > registry_stack_capacity:
+			var excess_item_amount: int = item_amount - registry_stack_capacity
+			var item_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+			excess_items = __create_excess_items(item_id, excess_item_amount, item_instance_data)
+			var _result_is_zero: int = __remove_items_from_slot(slot_number, item_id, excess_item_amount, item_instance_data)
+
 		if is_instance_valid(excess_items):
 			excess_items_array.push_back(excess_items)
 
 		# If the item stack count is limited and we are over the stack count limit, the whole stack is an excess items.
 		if _m_item_registry.is_stack_count_limited(item_id) and stack_count > registry_stack_count:
 			# Then convert the whole item slot into excess items
-			var item_amount: int = __get_slot_item_amount(slot_number)
-			var excess_stack: ExcessItems = __create_excess_items(item_id, item_amount)
+			# NOTE: Re-read the current slot amount since it may have been reduced by the stack capacity check above.
+			var current_item_amount: int = __get_slot_item_amount(slot_number)
+			var item_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+			var excess_stack: ExcessItems = __create_excess_items(item_id, current_item_amount, item_instance_data)
 			if is_instance_valid(excess_stack):
 				excess_items_array.push_back(excess_stack)
 
 			# Empty the slot.
-			var _result_is_zero: int = __remove_items_from_slot(slot_number, item_id, item_amount)
+			var _result_is_zero: int = __remove_items_from_slot(slot_number, item_id, current_item_amount, item_instance_data)
 	return excess_items_array
 
 
@@ -999,7 +1219,7 @@ func sanity_check() -> PackedStringArray:
 
 		# If the stack count is limited and greater than the registered stack count, the stack shouldn't be present in the inventory:
 		if _m_item_registry.is_stack_count_limited(item_id) and stack_count > registry_stack_count:
-			message += "Slot %d: Stack with item ID '%d' should not be pressent since the max stack count has already been reached.\n" % [slot_number, item_id]
+			message += "Slot %d: Stack with item ID '%d' should not be present since the max stack count has already been reached.\n" % [slot_number, item_id]
 
 		message_array[message_array_index] = message
 		message_array_index += 1
@@ -1026,27 +1246,32 @@ func get_empty_slot_count() -> int:
 
 
 ## Returns the remaining item capacity for the specified item ID.
-func get_remaining_capacity_for_item(p_item_id: int) -> int:
-	# Check if the inventory is infinite because then that simplifies this operation.
-	var inventory_size: int = size()
-	if inventory_size == 0:
+func get_remaining_capacity_for_item(p_item_id: int, p_instance_data: Variant = null) -> int:
+	if size() == 0 and not is_infinite():
 		return 0
 
-	var registered_stack_count: int = _m_item_registry.get_stack_count(p_item_id)
+	# Make sure to always fallback instance data to whatever is on the registry:
+	p_instance_data = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
+
+	# Check if the inventory is infinite because then that simplifies this operation.
 	if is_infinite():
-		if registered_stack_count == INFINITE_SIZE:
+		if not _m_item_registry.is_stack_count_limited(p_item_id):
 			# There's no limit to the number of stacks. The amount we can store of this item is infinite.
 			return _INT64_MAX
 
 	# Get the remaining item capacity within all the slot:
 	var remaining_item_capacity_within_slots: int = 0
 	var registered_stack_capacity: int = _m_item_registry.get_stack_capacity(p_item_id)
+	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
 	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
 	for slot_number: int in item_id_slots_array:
-		var remaining_slot_capacity: int = clampi(registered_stack_capacity - get_slot_item_amount(slot_number), 0, registered_stack_capacity)
-		remaining_item_capacity_within_slots += remaining_slot_capacity
+		var slot_instance_data: Variant = _m_item_slots_instance_data_tracker.get(slot_number, null)
+		if registered_instance_data_comparator.call(p_instance_data, slot_instance_data):
+			var remaining_slot_capacity: int = clampi(registered_stack_capacity - get_slot_item_amount(slot_number), 0, registered_stack_capacity)
+			remaining_item_capacity_within_slots += remaining_slot_capacity
 
 	# Count the remaining stack count
+	var registered_stack_count: int = _m_item_registry.get_stack_count(p_item_id)
 	var item_stack_count: int = _m_item_stack_count_tracker.get(p_item_id, 0)
 	var remaining_stack_count: int = registered_stack_count - item_stack_count
 	if not _m_item_registry.is_stack_count_limited(p_item_id):
@@ -1067,36 +1292,41 @@ func get_remaining_capacity_for_item(p_item_id: int) -> int:
 ## Organizes the inventory by maximizing its space usage and moving items closer to the beginning of the inventory by avoiding empty slots. [br]
 ## If an array of item IDs is passed to the function, the items will be organized in the order found within the array.
 func organize(p_item_ids_array: PackedInt64Array = []) -> void:
-	# Collect item totals for every item:
-	var item_totals: Dictionary = { }
-	for slot_number: int in __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size()):
-		if __is_slot_empty(slot_number):
-			continue
-		var item_id: int = __get_slot_item_id(slot_number)
-		item_totals[item_id] = __get_slot_item_amount(slot_number) + item_totals.get(item_id, 0)
+	# Duplicate internal data before reorganizing
+	var item_slots_packed_array: PackedInt64Array = _m_item_slots_packed_array.duplicate()
+	var item_slots_tracker: Dictionary = _m_item_slots_tracker.duplicate()
+	var item_slots_instance_data_tracker: Dictionary[int, Variant] = _m_item_slots_instance_data_tracker.duplicate()
 
-	# Clear all the statistics but keep the inventory memory allocated to the same size
+	# Clear all the data but keep the inventory memory allocated to the same size
 	clear()
 
 	# Re-add the items to the inventory:
 	if p_item_ids_array.is_empty():
 		# No specific sorting. Use the item IDs themselves as a sorting value.
-		var sorted_item_ids: PackedInt64Array = item_totals.keys()
+		var sorted_item_ids: PackedInt64Array = item_slots_tracker.keys()
 		sorted_item_ids.sort()
 		for item_id: int in sorted_item_ids:
-			var amount: int = item_totals[item_id]
-			var excess_items: ExcessItems = add(item_id, amount)
-			if is_instance_valid(excess_items):
-				push_warning("InventoryManager: Stumpled upon excess items with upon inventory reorganization.\n%s\n" % excess_items)
+			var slots_where_item_was_installed: PackedInt64Array = item_slots_tracker[item_id]
+			for slot_number: int in slots_where_item_was_installed:
+				var item_amount_index: int = __calculate_slot_item_amount_index(slot_number)
+				var amount: int = item_slots_packed_array[item_amount_index]
+				var instance_data: Variant = item_slots_instance_data_tracker.get(slot_number, null)
+				var excess_items: ExcessItems = add(item_id, amount, instance_data)
+				if is_instance_valid(excess_items):
+					push_warning("InventoryManager: Stumbled upon excess items upon inventory reorganization.\n%s\n" % excess_items)
 	else:
 		# Specific sorting given. Track unprocessed item IDs.
-		var item_ids_not_processed: PackedInt64Array = item_totals.keys()
+		var item_ids_not_processed: PackedInt64Array = item_slots_tracker.keys()
 		for item_id: int in p_item_ids_array:
-			if item_totals.has(item_id):
-				var amount: int = item_totals[item_id]
-				var excess_items: ExcessItems = add(item_id, amount)
-				if is_instance_valid(excess_items):
-					push_warning("InventoryManager: Stumpled upon excess items with ID '%d' upon inventory reorganization." % item_id)
+			if item_slots_tracker.has(item_id):
+				var slots_where_item_was_installed: PackedInt64Array = item_slots_tracker[item_id]
+				for slot_number: int in slots_where_item_was_installed:
+					var item_amount_index: int = __calculate_slot_item_amount_index(slot_number)
+					var amount: int = item_slots_packed_array[item_amount_index]
+					var instance_data: Variant = item_slots_instance_data_tracker.get(slot_number, null)
+					var excess_items: ExcessItems = add(item_id, amount, instance_data)
+					if is_instance_valid(excess_items):
+						push_warning("InventoryManager: Stumbled upon excess items upon inventory reorganization.\n%s\n" % excess_items)
 				var index_found: int = item_ids_not_processed.find(item_id)
 				if index_found != -1:
 					item_ids_not_processed.remove_at(index_found)
@@ -1107,35 +1337,36 @@ func organize(p_item_ids_array: PackedInt64Array = []) -> void:
 			message_format += "\t%s"
 			push_warning(message_format % item_ids_not_processed)
 		for item_id: int in item_ids_not_processed:
-			if item_totals.has(item_id):
-				var amount: int = item_totals[item_id]
-				var excess_items: ExcessItems = add(item_id, amount)
+			var slots_where_item_was_installed: PackedInt64Array = item_slots_tracker[item_id]
+			for slot_number: int in slots_where_item_was_installed:
+				var item_amount_index: int = __calculate_slot_item_amount_index(slot_number)
+				var amount: int = item_slots_packed_array[item_amount_index]
+				var instance_data: Variant = item_slots_instance_data_tracker.get(slot_number, null)
+				var excess_items: ExcessItems = add(item_id, amount, instance_data)
 				if is_instance_valid(excess_items):
-					push_warning("InventoryManager: Stumpled upon excess items with ID '%d' upon inventory reorganization." % item_id)
+					push_warning("InventoryManager: Stumbled upon excess items upon inventory reorganization.\n%s\n" % excess_items)
 
 	# Emit signals for all the slots changed, and resize the slots array to fit only the used item slots to save memory.
-	var last_slot_number_filled: int = 0
+	var last_slot_number_filled: int = -1
 	for slot_number: int in __calculate_slot_numbers_given_array_size(_m_item_slots_packed_array.size()):
 		if __is_slot_empty(slot_number):
 			break
 		slot_modified.emit(slot_number)
 		last_slot_number_filled = slot_number
-	var expected_size: int = __calculate_array_size_needed_to_access_slot_index(last_slot_number_filled)
+	var expected_size: int = 0
+	if last_slot_number_filled >= 0:
+		expected_size = __calculate_array_size_needed_to_access_slot_index(last_slot_number_filled)
 	var error: int = _m_item_slots_packed_array.resize(expected_size)
 	if error != OK:
 		push_warning("InventoryManager: slot array resize did not go as expected within organize(). Got new size %d, but expected %d." % [_m_item_slots_packed_array.size(), expected_size])
-
-	if EngineDebugger.is_active():
-		if not has_meta(&"deregistered"):
-			EngineDebugger.send_message("inventory_manager:organize", [get_instance_id(), p_item_ids_array])
 
 
 ## Clears the inventory. Keeps the current size.
 func clear() -> void:
 	_m_item_slots_packed_array.fill(0)
 	_m_item_stack_count_tracker.clear()
-	_m_item_total_tracker.clear()
 	_m_item_slots_tracker.clear()
+	_m_item_slots_instance_data_tracker.clear()
 	inventory_cleared.emit()
 
 
@@ -1149,14 +1380,11 @@ func deregister() -> void:
 
 
 # Creates and returns an [ExcessItems] object meant to represent either the unprocessed addition or removal of items from the inventory.
-func __create_excess_items(p_item_id: int, p_amount: int) -> ExcessItems:
+func __create_excess_items(p_item_id: int, p_amount: int, p_instance_data: Variant) -> ExcessItems:
+	assert(p_amount >= 0, "InventoryManager: excess item amount upon creation is less than zero. This should not happen.")
 	if p_amount == 0:
 		return null
-	var excess_items_array: PackedInt64Array = PackedInt64Array()
-	var _new_size: int = excess_items_array.resize(2)
-	excess_items_array[0] = p_item_id
-	excess_items_array[1] = p_amount
-	return ExcessItems.new(_m_item_registry, excess_items_array)
+	return ExcessItems.new(_m_item_registry, p_item_id, p_amount, p_instance_data)
 
 
 # Function used by the debugger only. Used to increase the InventoryManager data arrays if needed.
@@ -1185,23 +1413,9 @@ func __decrease_stack_count(p_item_id: int) -> void:
 		_m_item_stack_count_tracker[p_item_id] = new_stack_count
 
 
-# Increases the total item amount count
-func __increase_item_total(p_item_id: int, p_amount: int) -> void:
-	_m_item_total_tracker[p_item_id] = _m_item_total_tracker.get(p_item_id, 0) + p_amount
-
-
-# Decreases the total item amount count
-func __decrease_item_total(p_item_id: int, p_amount: int) -> void:
-	var new_total: int = _m_item_total_tracker.get(p_item_id, 0) - p_amount
-	if new_total == 0:
-		var _erase_success: bool = _m_item_total_tracker.erase(p_item_id)
-	else:
-		_m_item_total_tracker[p_item_id] = new_total
-
-
 # Adds a slot to the item id slot tracker
 func __add_item_id_slot_to_tracker(p_item_id: int, p_slot_index: int) -> void:
-	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, [])
+	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
 	var was_empty: bool = item_id_slots_array.is_empty()
 	var _success: bool = item_id_slots_array.push_back(p_slot_index)
 	if was_empty:
@@ -1212,6 +1426,7 @@ func __add_item_id_slot_to_tracker(p_item_id: int, p_slot_index: int) -> void:
 func __remove_item_id_slot_from_tracker(p_item_id: int, p_slot_index: int) -> void:
 	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker[p_item_id]
 	var index_to_remove: int = item_id_slots_array.find(p_slot_index)
+	assert(index_to_remove != -1, "InventoryManager: could not find item id index for slot tracker removal. This should not happen. Please file a bug.")
 	item_id_slots_array.remove_at(index_to_remove)
 	if item_id_slots_array.is_empty():
 		var _success: bool = _m_item_slots_tracker.erase(p_item_id)
@@ -1221,9 +1436,30 @@ func _to_string() -> String:
 	return "<InventoryManager#%d> Size: %d, Allocated Slots: %d" % [get_instance_id(), size(), slots()]
 
 
+# Make instance data null if the same as fallback -- we use this since we always fallback to registered instance data when inventory manager has none.
+func __make_instance_data_null_if_same_as_fallback(p_item_id: int, p_instance_data: Variant) -> Variant:
+	if p_instance_data == null:
+		# There's nothing to do here. The instance data passed is already null meaning we don't need to use the fallback comparator.
+		return null
+	var registered_instance_data: Variant = _m_item_registry.get_instance_data(p_item_id)
+	if registered_instance_data == null:
+		# The registered instance data is null, but the passed instance data is not. The comparison is already processed -- the passed instance data has priority.
+		return p_instance_data
+
+	# Need to compare the registered instance data with the passed instance data:
+	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
+	if registered_instance_data_comparator.call(registered_instance_data, p_instance_data):
+		push_warning("InventoryManager: The registered instance data is the same as the passed instance data -- there's no need to install any instance data in this particular case. Ignoring passed data.")
+		return null
+	else:
+		# The target instance data differs -- we need to install this passed instance data which has priority
+		return p_instance_data
+
+
 func _init(p_item_registry: ItemRegistry = null) -> void:
 	_m_item_registry = p_item_registry
-	_m_inventory_manager_dictionary[_key.ITEM_ENTRIES] = _m_item_slots_packed_array
+	_m_inventory_manager_dictionary[_key.ITEM_SLOTS] = _m_item_slots_packed_array
+	_m_inventory_manager_dictionary[_key.INSTANCE_DATA_TRACKER] = _m_item_slots_instance_data_tracker
 
 	if not is_instance_valid(_m_item_registry):
 		_m_item_registry = ItemRegistry.new()
