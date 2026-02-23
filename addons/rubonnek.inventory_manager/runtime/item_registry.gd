@@ -267,11 +267,12 @@ func set_instance_data_comparator(p_item_id: int, p_instance_data_comparator: Ca
 	if not p_instance_data_comparator.is_valid():
 		push_warning("ItemRegistry: Attempted to add invalid instance data comparator to item with id %d. Ignoring." % p_item_id)
 		return
-	var expected_arg_count: int = 2
-	var arg_count: int = p_instance_data_comparator.get_argument_count()
-	if arg_count != expected_arg_count:
-		push_warning("ItemRegistry: Instance data comparator for item id %d must accept exactly %d arguments (first_instance_data, second_instance_data), but it accepts %d. Ignoring." % [p_item_id, expected_arg_count, arg_count])
-		return
+	# NOTE: Callable.get_argument_count() is not available in Godot 4.2.1. We can't do some Callable validation here.
+	#var expected_arg_count: int = 2
+	#var arg_count: int = p_instance_data_comparator.get_argument_count()
+	#if arg_count != expected_arg_count:
+	#	push_warning("ItemRegistry: Instance data comparator for item id %d must accept exactly %d arguments (first_instance_data, second_instance_data), but it accepts %d. Ignoring." % [p_item_id, expected_arg_count, arg_count])
+	#	return
 	var item_registry_entry_dictionary: Dictionary = _m_item_registry_entries_dictionary.get(p_item_id, { })
 	if not _m_item_registry_entries_dictionary.has(p_item_id):
 		_m_item_registry_entries_dictionary[p_item_id] = item_registry_entry_dictionary

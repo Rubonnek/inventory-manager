@@ -1295,7 +1295,7 @@ func organize(p_item_ids_array: PackedInt64Array = []) -> void:
 	# Duplicate internal data before reorganizing
 	var item_slots_packed_array: PackedInt64Array = _m_item_slots_packed_array.duplicate()
 	var item_slots_tracker: Dictionary = _m_item_slots_tracker.duplicate()
-	var item_slots_instance_data_tracker: Dictionary[int, Variant] = _m_item_slots_instance_data_tracker.duplicate()
+	var item_slots_instance_data_tracker: Dictionary = _m_item_slots_instance_data_tracker.duplicate()
 
 	# Clear all the data but keep the inventory memory allocated to the same size
 	clear()
