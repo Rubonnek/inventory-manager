@@ -1442,7 +1442,7 @@ func __make_instance_data_null_if_same_as_fallback(p_item_id: int, p_instance_da
 	# Need to compare the registered instance data with the passed instance data:
 	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
 	if registered_instance_data_comparator.call(registered_instance_data, p_instance_data):
-		push_warning("InventoryManager: The registered instance data is the same as the passed instance data -- there's no need to install any instance data in this particular case. Ignoring passed data.")
+		# The registered instance data is the same as the passed instance data. Return null to normalize this case.
 		return null
 	else:
 		# The target instance data differs -- we need to install this passed instance data which has priority
