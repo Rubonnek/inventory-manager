@@ -781,7 +781,7 @@ func is_empty() -> bool:
 	return _m_item_stack_count_tracker.is_empty()
 
 
-## Returns the total sum of the specified item across all stacks within the inventory.[br]
+## Returns the total sum of the specified item and its associated instance data across all stacks within the inventory.[br]
 func get_item_total(p_item_id: int, p_instance_data: Variant = null) -> int:
 	var item_count: int = 0
 	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
