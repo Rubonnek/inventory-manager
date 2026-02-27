@@ -32,6 +32,24 @@ class_name InventoryManager
 ## Holds a list of items and their amount.
 ##
 ## Holds a list of item IDs and their amount and provides methods for adding, removing, transfering, etc, these items by their slots.
+##
+## Instance data behavior (summary):
+## - Item slots store only item ID and amount; instance data is tracked separately per slot.
+## - Public getters resolve instance data by checking the slot override first, then falling back to the registry default.
+## - When consuming instance data (add/remove/transfer/organize), incoming instance data is normalized: if it is equivalent to the registry default (per comparator), it is treated as null to avoid redundant storage.
+## - Stack compatibility is determined by the item registry’s instance data comparator; stacks only merge when comparator returns true.
+## - When a slot has no override, get_slot_item_instance_data() returns the registry default (if any).
+##
+## Comparator and fallback rationale:
+## - The instance data comparator is the single source of truth for equality; it can be stricter or looser than raw equality.
+## - Normalizing to null avoids storing data that is “effectively default” per comparator, reducing memory and keeping stacks mergeable.
+## - When checking capacity, totals, and removals, the comparator guarantees consistent behavior across custom data and registry defaults.
+##
+## Typical flow:
+## 1) You set registry defaults (ItemRegistry.set_instance_data).
+## 2) You optionally set a custom comparator for stack compatibility.
+## 3) When adding items, if custom data matches the default per comparator, the inventory stores null.
+## 4) When reading instance data, null resolves back to the registry default for convenience.
 
 # Design choices:
 # * Item slots do not hold any data other than the item ID and their amount. Item name, description, price, etc, are optional.
@@ -693,7 +711,8 @@ func get_slot_item_amount(p_slot_index: int) -> int:
 
 
 ## Returns the slot item instance data. Returns null if there's no associated instance data.
-## Note: there are two levels of item instance data. The instance data registered within the ItemRegistry and the slot-specific item instance data. If there is no slot specific instance data, this function returns the instance data registered at the item registry if there's any.
+## Note: there are two levels of item instance data: registry defaults and per-slot overrides.
+## If the slot has no override, this accessor returns the registry default (if any).
 func get_slot_item_instance_data(p_slot_index: int) -> Variant:
 	if not is_slot_valid(p_slot_index):
 		push_warning("InventoryManager: Invalid slot (%d) passed to get_slot_item_instance_data()." % p_slot_index)
@@ -706,6 +725,20 @@ func get_slot_item_instance_data(p_slot_index: int) -> Variant:
 	var item_instance_data: Variant = _m_item_slots_instance_data_tracker.get(p_slot_index, null)
 	if item_instance_data == null:
 		item_instance_data = _m_item_registry.get_instance_data(item_id)
+	return item_instance_data
+
+
+## Returns the slot item instance data without checking the item registry.
+## Note: this accessor does not apply registry defaults; it only returns per-slot overrides (or null).
+func get_slot_item_instance_data_no_fallback(p_slot_index: int) -> Variant:
+	if not is_slot_valid(p_slot_index):
+		push_warning("InventoryManager: Invalid slot (%d) passed to get_slot_item_instance_data()." % p_slot_index)
+		return null
+	if not __is_slot_allocated(p_slot_index):
+		return null
+	if is_slot_empty(p_slot_index):
+		return null
+	var item_instance_data: Variant = _m_item_slots_instance_data_tracker.get(p_slot_index, null)
 	return item_instance_data
 
 
@@ -723,7 +756,9 @@ func get_slot_item_instance_data_comparator(p_slot_index: int) -> Callable:
 	return item_instance_data_comparator
 
 
-## Sets the slot item instance data
+## Sets the slot item instance data.
+## If the passed instance data matches the registry default per comparator, the slot override is cleared.
+## Use this to apply per-slot customization while keeping default data implicit.
 func set_slot_item_instance_data(p_slot_index: int, p_item_instance_data: Variant) -> void:
 	if not is_slot_valid(p_slot_index):
 		push_warning("InventoryManager: Invalid slot (%d) passed to set_slot_item_instance_data()." % p_slot_index)
@@ -1429,7 +1464,8 @@ func _to_string() -> String:
 	return "<InventoryManager#%d> Size: %d, Allocated Slots: %d" % [get_instance_id(), size(), slots()]
 
 
-# Make instance data null if the same as fallback -- we use this since we always fallback to registered instance data when inventory manager has none.
+# Normalize instance data: return null when the passed data is equivalent to the registry default per comparator.
+# This keeps storage minimal and preserves stack compatibility with default data.
 func __make_instance_data_null_if_same_as_fallback(p_item_id: int, p_instance_data: Variant) -> Variant:
 	if p_instance_data == null:
 		# There's nothing to do here. The instance data passed is already null meaning we don't need to use the fallback comparator.
