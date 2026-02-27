@@ -795,8 +795,6 @@ func get_item_total(p_item_id: int, p_instance_data: Variant = null) -> int:
 
 
 ## Returns true if the inventory holds at least the specified amount of the item in question.[br]
-## When [code]p_instance_data[/code] is null (default), the check is performed across all instance data variations.[br]
-## When [code]p_instance_data[/code] is not null, only the stacks with matching instance data are considered.
 func has_item_amount(p_item_id: int, p_amount: int, p_instance_data: Variant = null) -> bool:
 	var item_count: int = 0
 	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
@@ -812,12 +810,7 @@ func has_item_amount(p_item_id: int, p_amount: int, p_instance_data: Variant = n
 
 
 ## Returns true when one item with the specified item ID is found within the inventory. Returns false otherwise.[br]
-## When [code]p_instance_data[/code] is null (default), returns true if any stack of the item exists regardless of instance data.[br]
-## When [code]p_instance_data[/code] is not null, returns true only if a stack with matching instance data exists.
 func has_item(p_item_id: int, p_instance_data: Variant = null) -> bool:
-	if p_instance_data == null:
-		return p_item_id in _m_item_slots_tracker
-	# Non-null instance data was provided -- check for at least one matching slot
 	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
 	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
 	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
@@ -1087,9 +1080,9 @@ func prettify() -> Array:
 		var description: String = _m_item_registry.get_description(item_id)
 		if not description.is_empty():
 			readable_dictionary["description"] = description
-		var registry_entry_metadata: Dictionary = _m_item_registry.get_registry_metadata_data()
-		if not registry_entry_metadata.is_empty():
-			readable_dictionary["metadata"] = registry_entry_metadata
+		var item_metadata: Dictionary = _m_item_registry.get_item_metadata_data(item_id)
+		if not item_metadata.is_empty():
+			readable_dictionary["metadata"] = item_metadata
 
 		# Slot data:
 		readable_dictionary["slot"] = slot_number

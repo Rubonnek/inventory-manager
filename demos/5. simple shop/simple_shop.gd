@@ -180,13 +180,19 @@ func __on_inventory_slot_modified(_p_slot_number: int) -> void:
 	__refresh_inventory_list()
 
 
-func __on_inventory_item_list_item_activated(p_index: int) -> void:
-	var item_id: int = inventory_item_list_.get_item_metadata(p_index)
+func __on_inventory_item_list_item_activated(p_item_list_index: int) -> void:
+	var slot_number: int = inventory_item_list_.get_item_metadata(p_item_list_index)
+	var item_id: int = inventory_manager.get_slot_item_id(slot_number)
+	var item_instance_data: Variant = inventory_manager.get_slot_item_instance_data(slot_number)
 	var item_price: int = item_registry.get_item_metadata(item_id, "price")
 	var item_name: String = item_registry.get_name(item_id)
 	var purchased_amount: int = 1
-	var _ignore: ExcessItems = inventory_manager.remove(item_id, 1)
-	_ignore = inventory_manager.add(item_ids.GOLD_COIN, item_price * purchased_amount)
+	var excess_items: ExcessItems = inventory_manager.remove(item_id, 1, item_instance_data)
+	if is_instance_valid(excess_items):
+		push_warning("Found excess items when removing item. This means inventory manager was not able to remove the item from the inventory. Make sure your code handles this case properly in the UI code.")
+	excess_items = inventory_manager.add(item_ids.GOLD_COIN, item_price * purchased_amount)
+	if is_instance_valid(excess_items):
+		push_warning("Found excess items when adding item. This means inventory manager was not able to add the item to the inventory. Make sure your code handles this case properly in the UI code.")
 	print("Sold 1 " + item_name + " for " + str(item_price * purchased_amount) + " gold coins")
 	total_gold_coins_in_inventory_label_.set_text("Gold Coins: " + str(inventory_manager.get_item_total(item_ids.GOLD_COIN)))
 
@@ -221,7 +227,7 @@ func __refresh_inventory_list() -> void:
 		var item_name: String = item_registry.get_name(item_id)
 		var item_texture: Texture2D = item_registry.get_icon(item_id)
 		var index: int = inventory_item_list_.add_item(item_name + " - " + str(item_amount), item_texture)
-		inventory_item_list_.set_item_metadata(index, item_id)
+		inventory_item_list_.set_item_metadata(index, slot_number)
 	if previously_selected_index != -1:
 		inventory_item_list_.force_update_list_size()
 		if previously_selected_index < inventory_item_list_.get_item_count():
