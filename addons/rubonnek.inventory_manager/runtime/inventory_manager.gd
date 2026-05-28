@@ -817,9 +817,14 @@ func is_empty() -> bool:
 
 
 ## Returns the total sum of the specified item and its associated instance data across all stacks within the inventory.[br]
-func get_item_total(p_item_id: int, p_instance_data: Variant = null) -> int:
+## When [code]p_ignore_instance_data[/code] is true, all stacks with matching item ID are included regardless of their instance data.
+func get_item_total(p_item_id: int, p_instance_data: Variant = null, p_ignore_instance_data: bool = false) -> int:
 	var item_count: int = 0
 	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
+	if p_ignore_instance_data:
+		for slot_number: int in item_id_slots_array:
+			item_count += __get_slot_item_amount(slot_number)
+		return item_count
 	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
 	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
 	for slot_number: int in item_id_slots_array:
@@ -830,9 +835,16 @@ func get_item_total(p_item_id: int, p_instance_data: Variant = null) -> int:
 
 
 ## Returns true if the inventory holds at least the specified amount of the item in question.[br]
-func has_item_amount(p_item_id: int, p_amount: int, p_instance_data: Variant = null) -> bool:
+## When [code]p_ignore_instance_data[/code] is true, all stacks with matching item ID are counted regardless of their instance data.
+func has_item_amount(p_item_id: int, p_amount: int, p_instance_data: Variant = null, p_ignore_instance_data: bool = false) -> bool:
 	var item_count: int = 0
 	var item_id_slots_array: PackedInt64Array = _m_item_slots_tracker.get(p_item_id, PackedInt64Array())
+	if p_ignore_instance_data:
+		for slot_number: int in item_id_slots_array:
+			item_count += __get_slot_item_amount(slot_number)
+			if item_count >= p_amount:
+				return true
+		return item_count >= p_amount
 	var normalized_instance_data: Variant = __make_instance_data_null_if_same_as_fallback(p_item_id, p_instance_data)
 	var registered_instance_data_comparator: Callable = _m_item_registry.get_instance_data_comparator(p_item_id)
 	for slot_number: int in item_id_slots_array:
